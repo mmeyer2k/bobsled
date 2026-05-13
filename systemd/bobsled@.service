@@ -1,0 +1,32 @@
+# systemd/bobsled@.service
+[Unit]
+Description=bobsled GitHub Actions runner slot %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+EnvironmentFile=%h/image-digest.env
+RuntimeDirectory=bobsled/%i
+RuntimeDirectoryMode=0700
+ExecStartPre=%h/bin/bobsled-mint \
+    --instance %i \
+    --output %t/bobsled/%i/jit.json
+ExecStart=/usr/bin/podman run --rm \
+    --name=bobsled-%i \
+    --userns=keep-id \
+    --read-only \
+    --security-opt=no-new-privileges \
+    --cap-drop=ALL \
+    --tmpfs=/tmp \
+    -v %t/bobsled/%i:/jit:ro \
+    -v %h/.cache/bobsled/slots/%i/current:/cache \
+    bobsled:${BOBSLED_IMAGE_DIGEST}
+ExecStopPost=/bin/rm -rf %t/bobsled/%i
+Restart=always
+RestartSec=2s
+StartLimitBurst=10
+StartLimitIntervalSec=120
+
+[Install]
+WantedBy=default.target
