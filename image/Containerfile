@@ -1,0 +1,39 @@
+# image/Containerfile
+FROM quay.io/podman/stable:latest
+
+ARG RUNNER_VERSION
+ARG TARGETARCH
+
+USER root
+RUN dnf -y install \
+        curl jq git tar gzip ca-certificates \
+        fuse-overlayfs slirp4netns shadow-utils && \
+    dnf clean all
+
+RUN useradd --create-home --shell /bin/bash --uid 1000 runner && \
+    echo "runner:100000:65536" >> /etc/subuid && \
+    echo "runner:100000:65536" >> /etc/subgid
+
+USER runner
+WORKDIR /home/runner
+
+RUN set -eu; \
+    arch=${TARGETARCH:-amd64}; \
+    case "$arch" in \
+        amd64) rarch=x64 ;; \
+        arm64) rarch=arm64 ;; \
+        *) echo "unsupported arch $arch" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL -o runner.tgz \
+      "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-${rarch}-${RUNNER_VERSION}.tar.gz"; \
+    tar xzf runner.tgz && rm runner.tgz
+
+COPY --chown=runner:runner entrypoint.sh /home/runner/entrypoint.sh
+RUN chmod 0755 /home/runner/entrypoint.sh
+
+ENV CONTAINERS_STORAGE_CONF=/home/runner/.config/containers/storage.conf
+RUN mkdir -p /home/runner/.config/containers && \
+    printf '[storage]\ndriver = "overlay"\ngraphroot = "/cache/podman-storage"\nrunroot = "/tmp/podman-run"\n[storage.options.overlay]\nmount_program = "/usr/bin/fuse-overlayfs"\n' \
+        > /home/runner/.config/containers/storage.conf
+
+ENTRYPOINT ["/home/runner/entrypoint.sh"]
