@@ -1,4 +1,8 @@
 # image/Containerfile
+# Base image quay.io/podman/stable already provides:
+#   - `podman` user at UID 1000 with subuid/subgid configured for rootless PiP
+#   - /home/podman as that user's home
+#   - rootless podman + fuse-overlayfs preinstalled
 FROM quay.io/podman/stable:latest
 
 ARG RUNNER_VERSION
@@ -6,16 +10,11 @@ ARG TARGETARCH
 
 USER root
 RUN dnf -y install \
-        curl jq git tar gzip ca-certificates \
-        fuse-overlayfs slirp4netns shadow-utils && \
+        curl jq git tar gzip ca-certificates && \
     dnf clean all
 
-RUN useradd --create-home --shell /bin/bash --uid 1000 runner && \
-    echo "runner:100000:65536" >> /etc/subuid && \
-    echo "runner:100000:65536" >> /etc/subgid
-
-USER runner
-WORKDIR /home/runner
+USER podman
+WORKDIR /home/podman
 
 RUN set -eu; \
     arch=${TARGETARCH:-amd64}; \
@@ -28,12 +27,17 @@ RUN set -eu; \
       "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-${rarch}-${RUNNER_VERSION}.tar.gz"; \
     tar xzf runner.tgz && rm runner.tgz
 
-COPY --chown=runner:runner entrypoint.sh /home/runner/entrypoint.sh
-RUN chmod 0755 /home/runner/entrypoint.sh
+COPY --chown=podman:podman entrypoint.sh /home/podman/entrypoint.sh
+USER root
+RUN chmod 0755 /home/podman/entrypoint.sh
+USER podman
 
-ENV CONTAINERS_STORAGE_CONF=/home/runner/.config/containers/storage.conf
-RUN mkdir -p /home/runner/.config/containers && \
+# Inner podman storage rooted at /cache/podman-storage so layer cache persists
+# across jobs in the same (slot, repo). The host bind-mounts the per-(slot, repo)
+# cache directory at /cache.
+ENV CONTAINERS_STORAGE_CONF=/home/podman/.config/containers/storage.conf
+RUN mkdir -p /home/podman/.config/containers && \
     printf '[storage]\ndriver = "overlay"\ngraphroot = "/cache/podman-storage"\nrunroot = "/tmp/podman-run"\n[storage.options.overlay]\nmount_program = "/usr/bin/fuse-overlayfs"\n' \
-        > /home/runner/.config/containers/storage.conf
+        > /home/podman/.config/containers/storage.conf
 
-ENTRYPOINT ["/home/runner/entrypoint.sh"]
+ENTRYPOINT ["/home/podman/entrypoint.sh"]

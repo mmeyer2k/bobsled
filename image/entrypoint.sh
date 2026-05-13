@@ -11,5 +11,5 @@ if [[ -z "$cfg" || "$cfg" == "null" ]]; then
     exit 1
 fi
 mkdir -p /cache/podman-storage /tmp/podman-run
-cd /home/runner
+cd /home/podman
 exec ./run.sh --jitconfig "$cfg"
