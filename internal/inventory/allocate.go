@@ -27,17 +27,6 @@ func Allocate(inv *Inventory) map[string]*state.State {
 	}
 
 	for _, p := range inv.Pools {
-		// Determine the per-host quota: no host in the spread may receive more
-		// than the smallest capacity in the spread. This ensures an even upper
-		// bound before spill kicks in for the tail hosts.
-		minCap := 0
-		for i, h := range p.Spread {
-			c := inv.Hosts[h].Capacity
-			if i == 0 || c < minCap {
-				minCap = c
-			}
-		}
-
 		remaining := p.Count
 		for _, h := range p.Spread {
 			if remaining == 0 {
@@ -46,9 +35,6 @@ func Allocate(inv *Inventory) map[string]*state.State {
 			s := out[h]
 			free := inv.Hosts[h].Capacity - len(s.Instances)
 			take := remaining
-			if take > minCap {
-				take = minCap
-			}
 			if take > free {
 				take = free
 			}

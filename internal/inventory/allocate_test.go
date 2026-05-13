@@ -19,12 +19,15 @@ func TestAllocate_FillsPrimaryThenSpills(t *testing.T) {
 		},
 	}
 	got := Allocate(inv)
-	require.Len(t, got["h1"].Instances, 4)
-	require.Len(t, got["h2"].Instances, 2)
+	require.Len(t, got["h1"].Instances, 4, "h1 fills to capacity")
+	require.Len(t, got["h2"].Instances, 2, "h2 absorbs spill")
 	require.Equal(t, []string{"bobsled", "podman"}, got["h1"].Repos["acme/foo"].Labels)
 }
 
-func TestAllocate_MultiplePoolsShareHost(t *testing.T) {
+func TestAllocate_GreedyFillUsesFirstHostBeforeSpilling(t *testing.T) {
+	// With h1 cap=8 and 6 foo + 2 bar all spreadable on h1, greedy fill puts
+	// everything on h1 — h2 stays idle. If the operator wants load on h2,
+	// they should lower h1's capacity or split into separate pools.
 	inv := &Inventory{
 		Hosts: map[string]Host{"h1": {SSH: "x", Capacity: 8}, "h2": {SSH: "y", Capacity: 4}},
 		Pools: []Pool{
@@ -33,8 +36,8 @@ func TestAllocate_MultiplePoolsShareHost(t *testing.T) {
 		},
 	}
 	got := Allocate(inv)
-	require.Len(t, got["h1"].Instances, 6, "4 foo + 2 bar")
-	require.Len(t, got["h2"].Instances, 2)
+	require.Len(t, got["h1"].Instances, 8, "all foo (6) + all bar (2) land on h1 (cap 8)")
+	require.Len(t, got["h2"].Instances, 0, "h2 unused because h1 absorbed everything")
 
 	fooCount, barCount := 0, 0
 	for _, inst := range got["h1"].Instances {
@@ -45,8 +48,19 @@ func TestAllocate_MultiplePoolsShareHost(t *testing.T) {
 			barCount++
 		}
 	}
-	require.Equal(t, 4, fooCount)
+	require.Equal(t, 6, fooCount)
 	require.Equal(t, 2, barCount)
+}
+
+func TestAllocate_SpillsWhenFirstHostFull(t *testing.T) {
+	// With h1 cap=5 and a pool of 7, h1 fills (5) and h2 takes the spill (2).
+	inv := &Inventory{
+		Hosts: map[string]Host{"h1": {SSH: "x", Capacity: 5}, "h2": {SSH: "y", Capacity: 5}},
+		Pools: []Pool{{Repo: "a/b", Count: 7, Spread: []string{"h1", "h2"}, Labels: []string{"bobsled"}}},
+	}
+	got := Allocate(inv)
+	require.Len(t, got["h1"].Instances, 5)
+	require.Len(t, got["h2"].Instances, 2)
 }
 
 func TestAllocate_Deterministic(t *testing.T) {
