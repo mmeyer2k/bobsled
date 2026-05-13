@@ -1,0 +1,11 @@
+/bin/
+/dist/
+*.test
+*.out
+coverage.*
+vendor/
+/image/*.tar
+/image/*.tar.gz
+*.local.yaml
+.env
+.envrc
