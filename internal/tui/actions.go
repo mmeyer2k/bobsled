@@ -84,6 +84,23 @@ func ScaleCmd(inventoryPath, host, repo string, count int) tea.Cmd {
 	return runAction(desc, inventoryPath, "scale", "--host", host, "--repo", repo, "--count", fmt.Sprint(count))
 }
 
+// SlotRemoveCmd shells out to `bobsled slot remove <host> <slot>` — the
+// graceful, index-preserving per-slot deletion path. Unlike ScaleCmd, this
+// removes the *specific* slot index (not "the highest slot" after dense
+// renumbering).
+func SlotRemoveCmd(inventoryPath, host string, slot int) tea.Cmd {
+	desc := fmt.Sprintf("remove slot %d on %s", slot, host)
+	return runAction(desc, inventoryPath, "slot", "remove", host, fmt.Sprint(slot))
+}
+
+// SlotEnableCmd shells out to `bobsled slot enable <host> <slot>` — re-arm a
+// previously disabled slot (re-create the default.target.wants symlink and
+// start the unit, which re-runs mint to get a fresh JIT config).
+func SlotEnableCmd(inventoryPath, host string, slot int) tea.Cmd {
+	desc := fmt.Sprintf("enable slot %d on %s", slot, host)
+	return runAction(desc, inventoryPath, "slot", "enable", host, fmt.Sprint(slot))
+}
+
 // RepoAddCmd runs `bobsled repo add <owner/name> --host <h> --count 1`.
 func RepoAddCmd(inventoryPath, repo, host string, count int) tea.Cmd {
 	desc := fmt.Sprintf("add pool %s on %s (count=%d)", repo, host, count)

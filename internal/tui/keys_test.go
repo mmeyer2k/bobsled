@@ -19,8 +19,15 @@ func modelWithTwoHosts(t *testing.T) Model {
 		},
 	}
 	m := New(inv, nil, "inventory.yaml")
-	m.Hosts["h1"] = &poller.HostState{Name: "h1", Slots: map[int]poller.SlotState{1: {N: 1}, 2: {N: 2}}}
-	m.Hosts["h2"] = &poller.HostState{Name: "h2", Slots: map[int]poller.SlotState{1: {N: 1}}}
+	// Slots need a Repo to render — rows.go filters out orphan (no-repo)
+	// slots, so without it the j-from-host cursor has no child to descend to.
+	m.Hosts["h1"] = &poller.HostState{Name: "h1", Slots: map[int]poller.SlotState{
+		1: {N: 1, Repo: "acme/foo"},
+		2: {N: 2, Repo: "acme/foo"},
+	}}
+	m.Hosts["h2"] = &poller.HostState{Name: "h2", Slots: map[int]poller.SlotState{
+		1: {N: 1, Repo: "acme/foo"},
+	}}
 	m.Cursor = FirstCursor(m.Hosts, m.Expanded)
 	return m
 }
@@ -82,22 +89,9 @@ func TestKey_Question_OpensForm(t *testing.T) {
 	require.NotNil(t, mm.Form, "? should open a huh form for keybindings help")
 }
 
-func TestKey_CapitalD_OnSlotFlashes(t *testing.T) {
-	m := modelWithTwoHosts(t)
-	m.Cursor = Cursor{Host: "h1", Kind: CursorSlot, Slot: 1}
-	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'D'}})
-	mm := mNew.(Model)
-	require.NotNil(t, mm.Flash)
-	require.Contains(t, mm.Flash.Text, "host")
-}
-
-func TestKey_CapitalD_OnHostOpensForm(t *testing.T) {
-	m := modelWithTwoHosts(t)
-	m.Cursor = Cursor{Host: "h1", Kind: CursorHost}
-	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'D'}})
-	mm := mNew.(Model)
-	require.NotNil(t, mm.Form, "D on a host should open a huh confirm form")
-}
+// Capital-D was the dedicated "remove host" key. It's gone — `d` is now
+// context-sensitive and unifies drain+remove across host / pool / slot rows
+// (see TestContextualActions_HostRowAllDisabled and TestKey_D_OpensForm).
 
 func TestKey_G_OpensForm(t *testing.T) {
 	m := modelWithTwoHosts(t)
@@ -129,23 +123,9 @@ func TestKey_A_OnSlotScalesUp(t *testing.T) {
 	require.NotNil(t, mm.Flash)
 }
 
-func TestKey_P_OnSlotOpensForm(t *testing.T) {
-	m := modelWithTwoHosts(t)
-	m.Hosts["h1"].Slots[1] = poller.SlotState{N: 1, Repo: "acme/foo"}
-	m.Cursor = Cursor{Host: "h1", Kind: CursorSlot, Slot: 1, Repo: "acme/foo"}
-	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'P'}})
-	mm := mNew.(Model)
-	require.NotNil(t, mm.Form, "P on a slot/repo should open a huh confirm form")
-}
-
-func TestKey_P_OnHostFlashes(t *testing.T) {
-	m := modelWithTwoHosts(t)
-	m.Cursor = Cursor{Host: "h1", Kind: CursorHost}
-	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'P'}})
-	mm := mNew.(Model)
-	require.NotNil(t, mm.Flash)
-	require.Contains(t, mm.Flash.Text, "slot row")
-}
+// Capital-P was the dedicated "remove pool" key. It's gone — `d` on a repo
+// row now drains+removes the pool, matching the unified context-sensitive
+// keymap (covered by TestContextualActions_*).
 
 func TestKey_Enter_TogglesRepoExpand(t *testing.T) {
 	m := modelWithTwoHosts(t)

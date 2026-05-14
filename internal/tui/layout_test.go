@@ -52,7 +52,9 @@ func TestContextualActions_HostRowAllEnabled(t *testing.T) {
 	require.Contains(t, keys, "d", "drain should show when host has enabled slots")
 }
 
-func TestContextualActions_HostRowAllDisabled(t *testing.T) {
+func TestContextualActions_HostRowAlwaysHasDrain(t *testing.T) {
+	// `d` is the unified drain+remove on host rows and is always shown —
+	// it's a no-op (or just removes the host record) if no slots are enabled.
 	m := newTestModelForFooter()
 	m.Cursor = Cursor{Host: "h1", Kind: CursorHost}
 	m.Hosts["h1"] = &poller.HostState{
@@ -61,10 +63,17 @@ func TestContextualActions_HostRowAllDisabled(t *testing.T) {
 	}
 	got := m.contextualActions()
 	keys := keysOf(got)
-	require.NotContains(t, keys, "d", "drain should be hidden when no slots are enabled")
+	require.Contains(t, keys, "d", "drain+remove should always be available on a host row")
 }
 
-func TestContextualActions_SlotDisabledNoDrain(t *testing.T) {
+func TestContextualActions_SlotDisabledHasEnableAndDelete(t *testing.T) {
+	// On a disabled slot the new keymap exposes:
+	//   e  → re-enable
+	//   d  → delete (NOT drain; the slot is already stopped)
+	//   r  → reset cache
+	// The intent of the original test ("disabled slot has no drain action") is
+	// preserved: there's no separate drain since the slot is already disabled.
+	// `d` is present but it means "delete" — different command, same key.
 	m := newTestModelForFooter()
 	m.Hosts["h1"] = &poller.HostState{
 		Name: "h1",
@@ -73,7 +82,8 @@ func TestContextualActions_SlotDisabledNoDrain(t *testing.T) {
 	m.Cursor = Cursor{Host: "h1", Repo: "acme/foo", Slot: 1, Kind: CursorSlot}
 	got := m.contextualActions()
 	keys := keysOf(got)
-	require.NotContains(t, keys, "d", "drain should be hidden on a disabled slot")
+	require.Contains(t, keys, "e", "enable should be offered on a disabled slot")
+	require.Contains(t, keys, "d", "delete should be offered on a disabled slot")
 	require.Contains(t, keys, "r", "reset cache should always be available")
 }
 

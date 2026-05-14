@@ -61,6 +61,34 @@ func cursorForRow(r Row) Cursor {
 	return Cursor{}
 }
 
+// CursorIndex returns the row index the cursor currently points at, or -1
+// if it doesn't match any row. Useful for snapshotting before a state change.
+func CursorIndex(c Cursor, hosts map[string]*poller.HostState, expanded map[string]bool) int {
+	return cursorIndex(c, BuildRows(hosts, nil, expanded))
+}
+
+// EnsureCursorValid checks the cursor against the current rows. If it still
+// matches a row, it's returned unchanged. Otherwise the cursor snaps to the
+// row at preferredIdx (clamped to [0, len(rows)-1]), or {} if no rows exist.
+// Use the old row index (captured before the state change) as preferredIdx
+// so the visual cursor stays at the same vertical spot.
+func EnsureCursorValid(c Cursor, hosts map[string]*poller.HostState, expanded map[string]bool, preferredIdx int) Cursor {
+	rows := BuildRows(hosts, nil, expanded)
+	if cursorIndex(c, rows) >= 0 {
+		return c
+	}
+	if len(rows) == 0 {
+		return Cursor{}
+	}
+	if preferredIdx >= len(rows) {
+		preferredIdx = len(rows) - 1
+	}
+	if preferredIdx < 0 {
+		preferredIdx = 0
+	}
+	return cursorForRow(rows[preferredIdx])
+}
+
 func cursorIndex(c Cursor, rows []Row) int {
 	for i, r := range rows {
 		switch c.Kind {

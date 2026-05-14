@@ -19,9 +19,10 @@ var (
 	cursorStyle    = lipgloss.NewStyle().Reverse(true)
 	footerStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	flashErrStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
-	keyStyle       = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
-	descStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	sepStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	keyStyle          = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
+	descStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	sepStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	sectionLabelStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Italic(true)
 )
 
 // renderView returns the full screen frame.
@@ -103,7 +104,13 @@ func (m Model) renderRow(r Row) string {
 	default: // RowSlot
 		label := r.Slot.UnitState
 		stateStyle := slotActive
-		if !r.Slot.Enabled {
+		// Pending overlay wins: while a slot-remove is in flight, show
+		// "deleting" regardless of the underlying systemd state.
+		pendingKey := fmt.Sprintf("%s:%d", r.Host, r.Slot.N)
+		if p, ok := m.Pending[pendingKey]; ok {
+			label = p
+			stateStyle = slotActivating // amber — work in progress
+		} else if !r.Slot.Enabled {
 			// disabled but still doing whatever it was doing → draining
 			if r.Slot.UnitState == "active" || r.Slot.UnitState == "activating" {
 				label = "draining"
@@ -124,9 +131,9 @@ func (m Model) renderRow(r Row) string {
 		if runner == "" {
 			runner = "—"
 		}
-		// Pad the state label to a fixed width BEFORE styling — lipgloss adds
-		// ANSI escapes that throw off fmt's width calculation.
-		padded := fmt.Sprintf("%-10s", label)
+		// Pad to the longest possible systemd state (`deactivating` = 12)
+		// BEFORE styling — lipgloss adds ANSI escapes that throw off fmt width.
+		padded := fmt.Sprintf("%-12s", label)
 		return fmt.Sprintf("      %2d  %s  %s", r.Slot.N, stateStyle.Render(padded), runner)
 	}
 }
@@ -170,22 +177,23 @@ func (m Model) renderRecent() string {
 }
 
 func (m Model) renderFooter() string {
-	row1Items := []hint{
-		{"j/k", "nav"},
-	}
+	navItems := []hint{{"↑/↓", ""}}
 	if m.Cursor.Kind == CursorHost || m.Cursor.Kind == CursorRepo {
-		row1Items = append(row1Items, hint{"⏎", "expand"})
+		navItems = append(navItems, hint{"⏎", "expand"})
 	}
-	row1Items = append(row1Items,
-		hint{"R", "refresh"},
-		hint{"?", "help"},
-		hint{"q", "quit"},
-	)
+	globalItems := []hint{
+		{"R", "refresh"},
+		{"?", "help"},
+		{"q", "quit"},
+	}
+	actionItems := m.contextualActions()
 
-	row2Items := m.contextualActions()
-
-	sep := sepStyle.Render(strings.Repeat("─", m.Width))
-	help := sep + "\n" + formatHints(row1Items) + "\n" + formatHints(row2Items)
+	rows := []string{formatSections([]section{{"NAV", navItems}})}
+	if len(actionItems) > 0 {
+		rows = append(rows, formatSections([]section{{"ACTIONS", actionItems}}))
+	}
+	rows = append(rows, formatSections([]section{{"GLOBAL", globalItems}}))
+	help := strings.Join(rows, "\n")
 
 	if m.Flash != nil && time.Now().Before(m.Flash.Until) {
 		style := footerStyle
@@ -199,51 +207,59 @@ func (m Model) renderFooter() string {
 
 type hint struct{ key, desc string }
 
+type section struct {
+	label string
+	hints []hint
+}
+
 func formatHints(hs []hint) string {
 	parts := make([]string, 0, len(hs))
 	for _, h := range hs {
-		parts = append(parts, keyStyle.Render(h.key)+" "+descStyle.Render(h.desc))
+		if h.desc == "" {
+			parts = append(parts, keyStyle.Render(h.key))
+		} else {
+			parts = append(parts, keyStyle.Render(h.key)+" "+descStyle.Render(h.desc))
+		}
 	}
 	return strings.Join(parts, descStyle.Render("  ·  "))
+}
+
+func formatSections(secs []section) string {
+	parts := make([]string, 0, len(secs))
+	for _, s := range secs {
+		parts = append(parts, sectionLabelStyle.Render(s.label)+"  "+formatHints(s.hints))
+	}
+	return strings.Join(parts, descStyle.Render("     "))
 }
 
 func (m Model) contextualActions() []hint {
 	switch m.Cursor.Kind {
 	case CursorHost:
-		out := []hint{}
-		if m.hostHasEnabledSlots(m.Cursor.Host) {
-			out = append(out, hint{"d", "drain host"})
+		return []hint{
+			{"d", "drain host"},
+			{"r", "reset caches"},
+			{"g", "gc"},
+			{"a", "add pool"},
+			{"p", "name pool"},
+			{"A", "add host"},
 		}
-		out = append(out,
-			hint{"D", "remove host"},
-			hint{"r", "reset caches"},
-			hint{"g", "gc"},
-			hint{"a", "add pool"},
-			hint{"p", "name pool"},
-			hint{"A", "add host"},
-		)
-		return out
 	case CursorRepo:
-		out := []hint{}
-		if m.repoHasEnabledSlots(m.Cursor.Host, m.Cursor.Repo) {
-			out = append(out, hint{"d", "drain pool"})
+		return []hint{
+			{"d", "drain pool"},
+			{"r", "reset caches"},
+			{"a", "+1 slot"},
 		}
-		out = append(out,
-			hint{"r", "reset caches"},
-			hint{"a", "+1 slot"},
-			hint{"P", "remove pool"},
-		)
-		return out
 	case CursorSlot:
 		out := []hint{}
 		if m.slotIsEnabled(m.Cursor.Host, m.Cursor.Slot) {
 			out = append(out, hint{"d", "drain"})
+		} else {
+			out = append(out,
+				hint{"e", "enable"},
+				hint{"d", "delete"},
+			)
 		}
-		out = append(out,
-			hint{"r", "reset cache"},
-			hint{"a", "+1 slot"},
-			hint{"P", "remove pool"},
-		)
+		out = append(out, hint{"r", "reset cache"})
 		return out
 	}
 	return nil
