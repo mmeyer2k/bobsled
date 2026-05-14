@@ -207,24 +207,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.Form != nil {
 			newForm, cmd := m.Form.Form.Update(v)
 			m.Form.Form = newForm.(*huh.Form)
-			if m.Form.Form.State == huh.StateCompleted {
+			switch m.Form.Form.State {
+			case huh.StateCompleted:
 				result := m.Form.Result()
 				cb := m.formOnSubmit
 				m.Form = nil
 				m.formOnSubmit = nil
 				if cb != nil {
-					if next := cb(result); next != nil {
-						return m, tea.Batch(cmd, next)
-					}
+					return m, cb(result)
 				}
-				return m, cmd
-			}
-			if m.Form.Form.State == huh.StateAborted {
+				return m, nil
+			case huh.StateAborted:
 				m.Form = nil
 				m.formOnSubmit = nil
+				return m, nil
+			default:
 				return m, cmd
 			}
-			return m, cmd
 		}
 		return m.handleKey(v)
 	case tea.WindowSizeMsg:
