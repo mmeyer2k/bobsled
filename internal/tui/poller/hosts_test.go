@@ -52,7 +52,7 @@ func TestHostsPoller_EmitsOnEachTick(t *testing.T) {
 	defer cancel()
 
 	emit := make(chan HostsMsg, 4)
-	go HostsPoller(ctx, NewSSHMux(), []string{"bobsled@h1"}, 10*time.Millisecond, emit)
+	go HostsPoller(ctx, NewSSHMux(), map[string]string{"h1": "bobsled@h1"}, 10*time.Millisecond, emit)
 
 	got := 0
 	deadline := time.After(200 * time.Millisecond)

@@ -98,15 +98,15 @@ type HostsMsg struct {
 
 // HostsPoller probes each target on an interval and sends results to emit.
 // One goroutine per target so a slow host doesn't block the others. Stops on
-// ctx done.
-func HostsPoller(ctx context.Context, mux *SSHMux, targets []string, interval time.Duration, emit chan<- HostsMsg) {
-	for _, t := range targets {
-		go hostLoop(ctx, mux, t, interval, emit)
+// ctx done. hosts maps inventory short name → SSH target.
+func HostsPoller(ctx context.Context, mux *SSHMux, hosts map[string]string, interval time.Duration, emit chan<- HostsMsg) {
+	for name, target := range hosts {
+		go hostLoop(ctx, mux, name, target, interval, emit)
 	}
 	<-ctx.Done()
 }
 
-func hostLoop(ctx context.Context, mux *SSHMux, target string, interval time.Duration, emit chan<- HostsMsg) {
+func hostLoop(ctx context.Context, mux *SSHMux, name, target string, interval time.Duration, emit chan<- HostsMsg) {
 	tick := time.NewTicker(interval)
 	defer tick.Stop()
 	for {
@@ -114,7 +114,7 @@ func hostLoop(ctx context.Context, mux *SSHMux, target string, interval time.Dur
 		select {
 		case <-ctx.Done():
 			return
-		case emit <- HostsMsg{Host: target, State: st, Err: err}:
+		case emit <- HostsMsg{Host: name, State: st, Err: err}:
 		}
 		select {
 		case <-ctx.Done():

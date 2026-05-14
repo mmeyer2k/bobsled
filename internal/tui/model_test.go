@@ -24,14 +24,14 @@ func newTestModel(t *testing.T) Model {
 func TestUpdate_HostsTickStoresState(t *testing.T) {
 	m := newTestModel(t)
 	st := &poller.HostState{
-		Name: "bobsled@h1", Reachable: true,
+		Name: "h1", Reachable: true,
 		Slots:      map[int]poller.SlotState{1: {N: 1, UnitState: "active", Repo: "acme/foo"}},
 		LastUpdate: time.Now(),
 	}
-	mNew, _ := m.Update(hostsTickMsg{M: poller.HostsMsg{Host: "bobsled@h1", State: st}})
+	mNew, _ := m.Update(hostsTickMsg{M: poller.HostsMsg{Host: "h1", State: st}})
 	mm := mNew.(Model)
-	require.NotNil(t, mm.Hosts["bobsled@h1"])
-	require.Equal(t, "active", mm.Hosts["bobsled@h1"].Slots[1].UnitState)
+	require.NotNil(t, mm.Hosts["h1"])
+	require.Equal(t, "active", mm.Hosts["h1"].Slots[1].UnitState)
 }
 
 func TestUpdate_RunnersTickStoresState(t *testing.T) {
@@ -46,9 +46,9 @@ func TestUpdate_RunnersTickStoresState(t *testing.T) {
 
 func TestUpdate_RecordsErrorBySource(t *testing.T) {
 	m := newTestModel(t)
-	mNew, _ := m.Update(hostsTickMsg{M: poller.HostsMsg{Host: "bobsled@h1", Err: assertErr("boom")}})
+	mNew, _ := m.Update(hostsTickMsg{M: poller.HostsMsg{Host: "h1", Err: assertErr("boom")}})
 	mm := mNew.(Model)
-	require.Contains(t, mm.Errs["hosts/bobsled@h1"], "boom")
+	require.Contains(t, mm.Errs["hosts/h1"], "boom")
 }
 
 type stringErr string

@@ -70,9 +70,9 @@ func (m Model) Init() tea.Cmd {
 // ===== Poller cmd plumbing =====
 
 func startHostsPoller(m Model) tea.Cmd {
-	targets := make([]string, 0, len(m.Inv.Hosts))
-	for _, h := range m.Inv.Hosts {
-		targets = append(targets, h.SSH)
+	targets := make(map[string]string, len(m.Inv.Hosts))
+	for name, h := range m.Inv.Hosts {
+		targets[name] = h.SSH
 	}
 	ch := make(chan poller.HostsMsg, 32)
 	go poller.HostsPoller(programCtx(), m.Mux, targets, hostsInterval, ch)
