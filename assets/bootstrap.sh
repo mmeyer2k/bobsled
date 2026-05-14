@@ -32,12 +32,14 @@ sudo -u "$USER_NAME" mkdir -p \
     "$HOME_DIR/.ssh" \
     "$HOME_DIR/.local/bin" \
     "$HOME_DIR/.cache/bobsled" \
+    "$HOME_DIR/.cache/bobsled/registry" \
     "$HOME_DIR/.config/systemd/user"
 sudo -u "$USER_NAME" chmod 0700 \
     "$HOME_DIR/.ssh" \
     "$HOME_DIR/.local" \
     "$HOME_DIR/.local/bin" \
-    "$HOME_DIR/.cache/bobsled"
+    "$HOME_DIR/.cache/bobsled" \
+    "$HOME_DIR/.cache/bobsled/registry"
 sudo -u "$USER_NAME" touch "$HOME_DIR/.ssh/authorized_keys"
 sudo -u "$USER_NAME" chmod 0600 "$HOME_DIR/.ssh/authorized_keys"
 
