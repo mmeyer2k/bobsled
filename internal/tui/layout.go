@@ -124,7 +124,7 @@ func (m Model) renderRow(r Row) string {
 		if runner == "" {
 			runner = "—"
 		}
-		return fmt.Sprintf("      %d  %s  %s", r.Slot.N, stateStyle.Render(label), runner)
+		return fmt.Sprintf("      %2d  %-10s  %s", r.Slot.N, stateStyle.Render(label), runner)
 	}
 }
 
