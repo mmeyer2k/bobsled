@@ -158,6 +158,7 @@ func (m Model) renderFooter() string {
 	)
 	row2 := formatKeys(
 		[2]string{"a", "add slot"},
+		[2]string{"p/P", "pool +/-"},
 		[2]string{"A", "add host"},
 		[2]string{"d", "drain"},
 		[2]string{"D", "remove host"},

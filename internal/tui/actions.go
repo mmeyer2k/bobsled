@@ -70,6 +70,12 @@ func GCCmd(inventoryPath string) tea.Cmd {
 	return runAction("gc orphan runners", inventoryPath, "gc")
 }
 
+// RepoRemoveCmd runs `bobsled repo remove <owner/name>`.
+func RepoRemoveCmd(inventoryPath, repo string) tea.Cmd {
+	desc := fmt.Sprintf("remove pool %s", repo)
+	return runAction(desc, inventoryPath, "repo", "remove", repo)
+}
+
 // ScaleCmd shells out to `bobsled scale --host h --repo r --count N`.
 func ScaleCmd(inventoryPath, host, repo string, count int) tea.Cmd {
 	desc := fmt.Sprintf("scale %s on %s to %d", repo, host, count)

@@ -142,3 +142,30 @@ func TestKey_A_OnSlotInvokesScale(t *testing.T) {
 	require.NotNil(t, mm.Flash)
 	require.Contains(t, mm.Flash.Text, "scaling")
 }
+
+func TestKey_P_OnSlotOpensRemovePoolModal(t *testing.T) {
+	m := modelWithTwoHosts(t)
+	m.Hosts["h1"].Slots[1] = poller.SlotState{N: 1, Repo: "acme/foo"}
+	m.Cursor = Cursor{Host: "h1", Kind: CursorSlot, Slot: 1}
+	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'P'}})
+	mm := mNew.(Model)
+	require.NotNil(t, mm.Modal)
+	require.Contains(t, mm.Modal.Title, "Remove pool acme/foo")
+}
+
+func TestKey_P_OnHostFlashes(t *testing.T) {
+	m := modelWithTwoHosts(t)
+	m.Cursor = Cursor{Host: "h1", Kind: CursorHost}
+	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'P'}})
+	mm := mNew.(Model)
+	require.NotNil(t, mm.Flash)
+	require.Contains(t, mm.Flash.Text, "slot row")
+}
+
+func TestKey_LowercaseP_FlashesAddHint(t *testing.T) {
+	m := modelWithTwoHosts(t)
+	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	mm := mNew.(Model)
+	require.NotNil(t, mm.Flash)
+	require.Contains(t, mm.Flash.Text, "repo add")
+}

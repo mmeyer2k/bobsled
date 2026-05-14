@@ -107,10 +107,41 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 				"g            gc orphan GitHub runners\n"+
 				"a            add slot (CLI only for v1 — use `bobsled scale`)\n"+
 				"A            add host (CLI only for v1 — use `bobsled host add`)\n"+
+				"p            (v1) flash hint for `bobsled repo add`\n"+
+				"P            remove pool (drain + drop from inventory)\n"+
 				"R            refresh (pollers tick automatically)\n"+
 				"?            this help\n"+
 				"q / Ctrl-C   quit",
 			nil)
+		m.Modal = &mod
+		return m, nil
+
+	case 'p':
+		m.Flash = &flash{Text: "v1: adding a new repo pool needs an inline prompt — use `bobsled repo add` from the CLI.", Until: time.Now().Add(4 * time.Second)}
+		return m, nil
+
+	case 'P':
+		// Figure out which repo to remove. If the cursor is on a slot, that
+		// slot's repo is the obvious target. On a host row, we don't have a
+		// single repo — flash a hint.
+		if m.Cursor.Kind != CursorSlot {
+			m.Flash = &flash{Text: "Put the cursor on a slot row — `P` removes that repo's pool.", Until: time.Now().Add(3 * time.Second)}
+			return m, nil
+		}
+		host := m.Cursor.Host
+		hostState := m.Hosts[host]
+		if hostState == nil {
+			return m, nil
+		}
+		repo := hostState.Slots[m.Cursor.Slot].Repo
+		if repo == "" {
+			m.Flash = &flash{Text: "This slot has no repo assigned yet — try again after the next poll.", Until: time.Now().Add(3 * time.Second)}
+			return m, nil
+		}
+		capturedRepo := repo
+		mod := NewConfirmModal("Remove pool "+repo,
+			"Drain every slot for this repo across the fleet, gc its GitHub-side runners, and drop the pool from inventory.",
+			func() tea.Cmd { return RepoRemoveCmd(m.InventoryPath, capturedRepo) })
 		m.Modal = &mod
 		return m, nil
 
