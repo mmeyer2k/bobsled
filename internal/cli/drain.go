@@ -20,7 +20,12 @@ func newDrainCmd() *cobra.Command {
 	)
 	c := &cobra.Command{
 		Use:   "drain",
-		Short: "Disable matching units; wait for in-flight jobs to finish",
+		Short: "Disable matching units and stop them (interrupts in-flight jobs)",
+		Long: "Drain hard-stops the matching units: `systemctl --user disable --now`. " +
+			"If a job is mid-run when drain fires, the container is killed and the " +
+			"workflow will fail or retry per GitHub's normal handling. This matches " +
+			"the ephemeral one-shot runner model — slots that are idle after drain " +
+			"would otherwise hang forever, so we don't try to be polite.",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if hostName == "" {
 				return fmt.Errorf("--host required")
@@ -46,7 +51,9 @@ func newDrainCmd() *cobra.Command {
 					continue
 				}
 				var n int
-				_, _ = fmt.Sscanf(f[0], "bobsled@%d.service", &n)
+				if _, err := fmt.Sscanf(f[0], "bobsled@%d.service", &n); err != nil || n <= 0 {
+					continue
+				}
 				if slot > 0 && n != slot {
 					continue
 				}
@@ -57,7 +64,7 @@ func newDrainCmd() *cobra.Command {
 				return nil
 			}
 			for _, n := range targets {
-				if _, err := s.Run(fmt.Sprintf("systemctl --user disable bobsled@%d", n)); err != nil {
+				if _, err := s.Run(fmt.Sprintf("systemctl --user disable --now bobsled@%d", n)); err != nil {
 					return err
 				}
 			}

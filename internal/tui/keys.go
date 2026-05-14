@@ -55,18 +55,18 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		switch m.Cursor.Kind {
 		case CursorHost:
 			title = "Drain host " + host + "?"
-			body = "Disables every slot on this host. In-flight jobs finish."
+			body = "Stops every slot on this host. Any in-flight job is interrupted."
 			run = func() tea.Cmd { return DrainHostCmd(m.InventoryPath, host) }
 		case CursorRepo:
 			repo := m.Cursor.Repo
 			title = "Drain " + repo + " on " + host + "?"
-			body = "Disables every slot serving this repo on this host."
+			body = "Stops every slot serving this repo on this host. Any in-flight job is interrupted."
 			captured := m.Hosts
 			run = func() tea.Cmd { return DrainRepoCmd(m.InventoryPath, host, repo, captured) }
 		case CursorSlot:
 			slot := m.Cursor.Slot
 			title = fmt.Sprintf("Drain slot %d on %s?", slot, host)
-			body = "Disables this slot. In-flight job finishes."
+			body = "Stops this slot. If it's running a job, the job is interrupted."
 			run = func() tea.Cmd { return DrainSlotCmd(m.InventoryPath, host, slot) }
 		}
 		fwr := NewConfirmForm(title, body)
