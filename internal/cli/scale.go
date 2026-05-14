@@ -3,6 +3,7 @@ package cli
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/m-meyer2k/bobsled/internal/inventory"
@@ -51,10 +52,19 @@ func newScaleCmd() *cobra.Command {
 			if cur.Repos == nil {
 				cur.Repos = map[string]state.RepoConfig{}
 			}
+			// Capture currently-assigned slots for this repo. We'll keep some (count) and
+			// disable the rest.
+			var existingSlots []int
 			for slot, inst := range cur.Instances {
 				if inst.Repo == repo {
-					delete(cur.Instances, slot)
+					existingSlots = append(existingSlots, slot)
 				}
+			}
+			sort.Ints(existingSlots)
+
+			// Remove all of them from state; we re-add `count` of them below.
+			for _, slot := range existingSlots {
+				delete(cur.Instances, slot)
 			}
 			if len(labels) > 0 {
 				cur.Repos[repo] = state.RepoConfig{Labels: labels}
@@ -83,6 +93,23 @@ func newScaleCmd() *cobra.Command {
 			if _, err := s.Run("flock -x state.yaml -c 'mv .state.yaml.tmp state.yaml'"); err != nil {
 				return err
 			}
+
+			// Disable surplus units (slots that used to serve this repo but aren't in the new set).
+			remaining := map[int]bool{}
+			for slot, inst := range cur.Instances {
+				if inst.Repo == repo {
+					remaining[slot] = true
+				}
+			}
+			for _, slot := range existingSlots {
+				if remaining[slot] {
+					continue
+				}
+				if _, err := s.Run(fmt.Sprintf("systemctl --user disable --now bobsled@%d", slot)); err != nil {
+					return fmt.Errorf("disable slot %d: %w", slot, err)
+				}
+			}
+
 			for slot, inst := range cur.Instances {
 				if inst.Repo == repo {
 					if _, err := s.Run(fmt.Sprintf("systemctl --user enable --now bobsled@%d", slot)); err != nil {
