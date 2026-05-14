@@ -14,10 +14,8 @@ ExecStartPre=%h/.local/bin/bobsled-mint \
     --output %t/bobsled/%i/jit.json
 ExecStart=/usr/bin/podman run --rm \
     --name=bobsled-%i \
-    --userns=keep-id \
-    --read-only \
-    --security-opt=no-new-privileges \
-    --cap-drop=ALL \
+    --userns=keep-id:uid=1000,gid=1000 \
+    --device=/dev/fuse \
     --tmpfs=/tmp \
     -v %t/bobsled/%i:/jit:ro \
     -v %h/.cache/bobsled/slots/%i/current:/cache \

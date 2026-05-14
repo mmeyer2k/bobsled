@@ -10,7 +10,8 @@ ARG TARGETARCH
 
 USER root
 RUN dnf -y install \
-        curl jq git tar gzip ca-certificates && \
+        curl jq git tar gzip ca-certificates \
+        libicu krb5-libs openssl-libs zlib && \
     dnf clean all
 
 USER podman
