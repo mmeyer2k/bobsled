@@ -30,3 +30,17 @@ func RenderConfig(r *inventory.Registry) ([]byte, error) {
 	}
 	return json.MarshalIndent(any, "", "  ")
 }
+
+// RenderRegistriesConf produces a podman registries.conf for the wrapper image,
+// pointing each upstream's mirror at the local zot under its name prefix.
+func RenderRegistriesConf(r *inventory.Registry) ([]byte, error) {
+	t, err := template.New("conf").Parse(assets.RegistriesConfTemplate)
+	if err != nil {
+		return nil, fmt.Errorf("parse registries.conf template: %w", err)
+	}
+	var buf bytes.Buffer
+	if err := t.Execute(&buf, r); err != nil {
+		return nil, fmt.Errorf("execute registries.conf template: %w", err)
+	}
+	return buf.Bytes(), nil
+}
