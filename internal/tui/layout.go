@@ -28,7 +28,7 @@ func (m Model) renderView() string {
 	}
 	var b strings.Builder
 	b.WriteString(m.renderHeader())
-	b.WriteString("\n")
+	b.WriteString("\n\n")
 	b.WriteString(m.renderTree())
 	b.WriteString("\n")
 	b.WriteString(m.renderWorkload())
@@ -137,8 +137,9 @@ func (m Model) renderRecent() string {
 }
 
 func (m Model) renderFooter() string {
-	help := footerStyle.Render(
-		"j/k:nav  ⏎:expand/collapse  a:add slot  A:add host  d:drain  D:remove host  r:reset cache  l:logs  g:gc  R:refresh  ?:help  q:quit")
+	row1 := footerStyle.Render("j/k:nav  ⏎:expand/collapse  R:refresh  ?:help  q:quit")
+	row2 := footerStyle.Render("a:add slot  A:add host  d:drain  D:remove host  r:reset cache  g:gc  l:logs")
+	help := row1 + "\n" + row2
 	if m.Flash != nil && time.Now().Before(m.Flash.Until) {
 		style := footerStyle
 		if m.Flash.IsError {
