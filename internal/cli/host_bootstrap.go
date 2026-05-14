@@ -19,6 +19,7 @@ func newHostCmd() *cobra.Command {
 	host.AddCommand(newHostUpgradeCmd())
 	host.AddCommand(newHostRotateKeyCmd())
 	host.AddCommand(newHostAddCmd())
+	host.AddCommand(newHostRemoveCmd())
 	return host
 }
 
