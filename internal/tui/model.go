@@ -233,6 +233,3 @@ func (m Model) View() string {
 	return m.renderView()
 }
 
-// Modal + InlinePrompt are stubs filled out in later tasks.
-type Modal struct{}
-type InlinePrompt struct{}
