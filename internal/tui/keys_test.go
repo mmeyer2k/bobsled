@@ -57,28 +57,13 @@ func TestKey_Q_Quits(t *testing.T) {
 	require.NotNil(t, cmd, "q must return tea.Quit")
 }
 
-func TestKey_D_OpensDrainSlotModal(t *testing.T) {
+func TestKey_D_OpensForm(t *testing.T) {
 	m := modelWithTwoHosts(t)
 	m.Cursor = Cursor{Host: "h1", Kind: CursorSlot, Slot: 1}
 	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
 	mm := mNew.(Model)
-	require.NotNil(t, mm.Modal)
-	require.Contains(t, mm.Modal.Title, "Drain slot")
-}
-
-func TestKey_RoutedToModalWhenOpen(t *testing.T) {
-	m := modelWithTwoHosts(t)
-	m.Cursor = Cursor{Host: "h1", Kind: CursorSlot, Slot: 1}
-	m, _ = updateOnce(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
-	m, _ = updateOnce(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
-	m, _ = updateOnce(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
-	m, _ = updateOnce(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
-	require.True(t, m.Modal.ReadyToConfirm())
-}
-
-func updateOnce(m Model, msg tea.Msg) (Model, tea.Cmd) {
-	r, c := m.Update(msg)
-	return r.(Model), c
+	require.NotNil(t, mm.Form, "d on a slot should open a huh form")
+	require.NotNil(t, mm.Form.Form, "form field must be set")
 }
 
 func TestKey_R_FlashesRefreshMessage(t *testing.T) {
@@ -90,12 +75,11 @@ func TestKey_R_FlashesRefreshMessage(t *testing.T) {
 	require.Contains(t, mm.Flash.Text, "refresh")
 }
 
-func TestKey_Question_OpensHelpModal(t *testing.T) {
+func TestKey_Question_OpensForm(t *testing.T) {
 	m := modelWithTwoHosts(t)
 	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
 	mm := mNew.(Model)
-	require.NotNil(t, mm.Modal)
-	require.Contains(t, mm.Modal.Title, "Keybindings")
+	require.NotNil(t, mm.Form, "? should open a huh form for keybindings help")
 }
 
 func TestKey_CapitalD_OnSlotFlashes(t *testing.T) {
@@ -107,21 +91,19 @@ func TestKey_CapitalD_OnSlotFlashes(t *testing.T) {
 	require.Contains(t, mm.Flash.Text, "host")
 }
 
-func TestKey_CapitalD_OnHostOpensRemoveModal(t *testing.T) {
+func TestKey_CapitalD_OnHostOpensForm(t *testing.T) {
 	m := modelWithTwoHosts(t)
 	m.Cursor = Cursor{Host: "h1", Kind: CursorHost}
 	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'D'}})
 	mm := mNew.(Model)
-	require.NotNil(t, mm.Modal)
-	require.Contains(t, mm.Modal.Title, "Remove host")
+	require.NotNil(t, mm.Form, "D on a host should open a huh confirm form")
 }
 
-func TestKey_G_OpensGCModal(t *testing.T) {
+func TestKey_G_OpensForm(t *testing.T) {
 	m := modelWithTwoHosts(t)
 	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
 	mm := mNew.(Model)
-	require.NotNil(t, mm.Modal)
-	require.Contains(t, mm.Modal.Title, "GC")
+	require.NotNil(t, mm.Form, "g should open a huh confirm form for GC")
 }
 
 func TestKey_A_NoClientFlashes(t *testing.T) {
@@ -134,26 +116,26 @@ func TestKey_A_NoClientFlashes(t *testing.T) {
 	require.Contains(t, mm.Flash.Text, "No GitHub client")
 }
 
-func TestKey_A_OnSlotNoClientFlashes(t *testing.T) {
-	// Even on a slot row, 'a' now routes through the picker flow and needs a client.
+func TestKey_A_OnSlotScalesUp(t *testing.T) {
+	// On a slot row with a repo, 'a' scales up directly (no form needed).
 	m := modelWithTwoHosts(t)
 	m.Hosts["h1"].Slots[1] = poller.SlotState{N: 1, Repo: "acme/foo"}
-	m.Cursor = Cursor{Host: "h1", Kind: CursorSlot, Slot: 1}
+	m.Cursor = Cursor{Host: "h1", Kind: CursorSlot, Slot: 1, Repo: "acme/foo"}
 	mNew, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
 	mm := mNew.(Model)
-	require.Nil(t, cmd, "no client → no async cmd")
+	// Direct scale: cmd should be non-nil and no form opened.
+	require.Nil(t, mm.Form, "slot row 'a' dispatches ScaleCmd directly, no form")
+	require.NotNil(t, cmd, "ScaleCmd should be returned")
 	require.NotNil(t, mm.Flash)
-	require.Contains(t, mm.Flash.Text, "No GitHub client")
 }
 
-func TestKey_P_OnSlotOpensRemovePoolModal(t *testing.T) {
+func TestKey_P_OnSlotOpensForm(t *testing.T) {
 	m := modelWithTwoHosts(t)
 	m.Hosts["h1"].Slots[1] = poller.SlotState{N: 1, Repo: "acme/foo"}
 	m.Cursor = Cursor{Host: "h1", Kind: CursorSlot, Slot: 1, Repo: "acme/foo"}
 	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'P'}})
 	mm := mNew.(Model)
-	require.NotNil(t, mm.Modal)
-	require.Contains(t, mm.Modal.Title, "Remove pool acme/foo")
+	require.NotNil(t, mm.Form, "P on a slot/repo should open a huh confirm form")
 }
 
 func TestKey_P_OnHostFlashes(t *testing.T) {
@@ -182,26 +164,11 @@ func TestKey_Enter_TogglesRepoExpand(t *testing.T) {
 	require.Equal(t, true, mm.Expanded[key], "second Enter re-expands")
 }
 
-func TestKey_LowercaseP_OpensAddPoolPrompt(t *testing.T) {
+func TestKey_LowercaseP_OpensAddPoolForm(t *testing.T) {
 	m := modelWithTwoHosts(t)
 	m.Cursor = Cursor{Host: "h1", Kind: CursorHost}
 	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
 	mm := mNew.(Model)
-	require.NotNil(t, mm.Modal)
-	require.Contains(t, mm.Modal.Title, "Add pool on h1")
-	require.NotNil(t, mm.Modal.OnSubmit)
+	require.NotNil(t, mm.Form, "p should open a huh input form for adding a pool")
 }
 
-func TestModal_PromptAcceptsAnyNonEmpty(t *testing.T) {
-	called := ""
-	mod := NewPromptModal("Add pool", "Type owner/name", func(text string) tea.Cmd {
-		called = text
-		return nil
-	})
-	mod = mod.OnKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
-	mod = mod.OnKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
-	mod = mod.OnKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
-	require.True(t, mod.ReadyToConfirm(), "any non-empty input should be ready")
-	_ = mod.Confirm()
-	require.Equal(t, "a/b", called)
-}

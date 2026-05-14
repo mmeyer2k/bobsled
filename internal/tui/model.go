@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/huh"
 	"github.com/m-meyer2k/bobsled/internal/ghapp"
 	"github.com/m-meyer2k/bobsled/internal/inventory"
 	"github.com/m-meyer2k/bobsled/internal/tui/poller"
@@ -29,10 +30,9 @@ type Model struct {
 
 	Cursor     Cursor
 	Expanded   map[string]bool
-	Modal      *Modal
-	Picker     *Picker
-	pickerHost string
-	Inline     *InlinePrompt
+	Form         *FormWithResult
+	formOnSubmit func(result interface{}) tea.Cmd
+	pickerHost   string
 	StatusLog *ringBuffer
 	Flash     *flash
 	Paused    bool
@@ -59,6 +59,14 @@ func New(inv *inventory.Inventory, c *ghapp.Client, inventoryPath string) Model 
 		StatusLog:     newRingBuffer(5),
 		InventoryPath: inventoryPath,
 	}
+}
+
+// openForm activates a huh form overlay. It stores the form + callback,
+// then fires the form's Init() so huh dispatches its first internal cmds.
+func (m Model) openForm(fwr FormWithResult, onSubmit func(result interface{}) tea.Cmd) (Model, tea.Cmd) {
+	m.Form = &fwr
+	m.formOnSubmit = onSubmit
+	return m, m.Form.Form.Init()
 }
 
 func (m Model) Init() tea.Cmd {
@@ -196,38 +204,27 @@ type flash struct {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch v := msg.(type) {
 	case tea.KeyMsg:
-		if m.Modal != nil {
-			next := m.Modal.OnKey(v)
-			m.Modal = &next
-			if next.Cancelled {
-				m.Modal = nil
-				return m, nil
-			}
-			if v.Type == tea.KeyEnter && next.ReadyToConfirm() {
-				cmd := next.Confirm()
-				m.Modal = nil
-				return m, cmd
-			}
-			return m, nil
-		}
-		if m.Picker != nil {
-			next, outcome := m.Picker.OnKey(v)
-			m.Picker = &next
-			switch outcome {
-			case PickerCancelled:
-				var cmd tea.Cmd
-				if next.OnCancel != nil {
-					cmd = next.OnCancel()
+		if m.Form != nil {
+			newForm, cmd := m.Form.Form.Update(v)
+			m.Form.Form = newForm.(*huh.Form)
+			if m.Form.Form.State == huh.StateCompleted {
+				result := m.Form.Result()
+				cb := m.formOnSubmit
+				m.Form = nil
+				m.formOnSubmit = nil
+				if cb != nil {
+					if next := cb(result); next != nil {
+						return m, tea.Batch(cmd, next)
+					}
 				}
-				m.Picker = nil
-				return m, cmd
-			case PickerSubmitted:
-				picked := next.Picked()
-				cmd := next.OnPick(picked)
-				m.Picker = nil
 				return m, cmd
 			}
-			return m, nil
+			if m.Form.Form.State == huh.StateAborted {
+				m.Form = nil
+				m.formOnSubmit = nil
+				return m, cmd
+			}
+			return m, cmd
 		}
 		return m.handleKey(v)
 	case tea.WindowSizeMsg:
@@ -278,19 +275,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if host == "" {
 			return m, nil
 		}
-		invPath := m.InventoryPath
-		p := NewPicker(
+		fwr := NewMultiSelectForm(
 			"Pools on "+host,
-			"Pick repos to add a slot for. Existing pools scale up; new ones get created.",
+			"Pick repos to add a slot for. Existing pools scale up; new ones get created. (x to toggle, / to filter, enter to submit)",
 			v.Repos,
-			func(picked []string) tea.Cmd {
-				return AddPoolsCmd(invPath, host, picked, m.Hosts)
-			},
 		)
-		m.Picker = &p
+		invPath := m.InventoryPath
+		hostStates := m.Hosts
+		return m.openForm(fwr, func(result interface{}) tea.Cmd {
+			picked, _ := result.([]string)
+			if len(picked) == 0 {
+				return nil
+			}
+			return AddPoolsCmd(invPath, host, picked, hostStates)
+		})
+	default:
+		if m.Form != nil {
+			newForm, cmd := m.Form.Form.Update(msg)
+			m.Form.Form = newForm.(*huh.Form)
+			return m, cmd
+		}
 		return m, nil
 	}
-	return m, nil
 }
 
 func (m Model) View() string {

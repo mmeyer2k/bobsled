@@ -50,99 +50,109 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			return m, nil
 		}
 		host := m.Cursor.Host
-		var onConfirm func() tea.Cmd
-		title := "Drain"
-		body := "Disable matching units. In-flight jobs finish."
+		var title, body string
+		var run func() tea.Cmd
 		switch m.Cursor.Kind {
 		case CursorHost:
-			title = "Drain host " + host
-			body = "Disable every slot on this host."
-			onConfirm = func() tea.Cmd { return DrainHostCmd(m.InventoryPath, host) }
+			title = "Drain host " + host + "?"
+			body = "Disables every slot on this host. In-flight jobs finish."
+			run = func() tea.Cmd { return DrainHostCmd(m.InventoryPath, host) }
 		case CursorRepo:
 			repo := m.Cursor.Repo
-			title = fmt.Sprintf("Drain pool %s on %s", repo, host)
-			body = "Disable every slot serving this repo on this host."
-			onConfirm = func() tea.Cmd {
-				return DrainRepoCmd(m.InventoryPath, host, repo, m.Hosts)
-			}
+			title = "Drain " + repo + " on " + host + "?"
+			body = "Disables every slot serving this repo on this host."
+			captured := m.Hosts
+			run = func() tea.Cmd { return DrainRepoCmd(m.InventoryPath, host, repo, captured) }
 		case CursorSlot:
 			slot := m.Cursor.Slot
-			title = fmt.Sprintf("Drain slot %d on %s", slot, host)
-			onConfirm = func() tea.Cmd { return DrainSlotCmd(m.InventoryPath, host, slot) }
+			title = fmt.Sprintf("Drain slot %d on %s?", slot, host)
+			body = "Disables this slot. In-flight job finishes."
+			run = func() tea.Cmd { return DrainSlotCmd(m.InventoryPath, host, slot) }
 		}
-		mod := NewConfirmModal(title, body, onConfirm)
-		m.Modal = &mod
-		return m, nil
+		fwr := NewConfirmForm(title, body)
+		return m.openForm(fwr, func(result interface{}) tea.Cmd {
+			if confirmed, _ := result.(bool); confirmed {
+				return run()
+			}
+			return nil
+		})
 
 	case 'D':
 		if m.Cursor.Kind != CursorHost {
-			m.Flash = &flash{Text: "D removes a whole host — put the cursor on a host row first.", Until: time.Now().Add(3 * time.Second)}
+			m.Flash = &flash{Text: "D removes a whole host — put the cursor on a host row.", Until: time.Now().Add(3 * time.Second)}
 			return m, nil
 		}
 		host := m.Cursor.Host
-		mod := NewConfirmModal("Remove host "+host,
-			"Drain all slots, optionally gc runners, and drop from inventory.",
-			func() tea.Cmd { return HostRemoveCmd(m.InventoryPath, host) })
-		m.Modal = &mod
-		return m, nil
+		fwr := NewConfirmForm("Remove host "+host+"?",
+			"Drain all slots, optionally gc runners, and drop from inventory.")
+		return m.openForm(fwr, func(result interface{}) tea.Cmd {
+			if confirmed, _ := result.(bool); confirmed {
+				return HostRemoveCmd(m.InventoryPath, host)
+			}
+			return nil
+		})
 
 	case 'r':
 		if m.Cursor.Host == "" {
 			return m, nil
 		}
 		host := m.Cursor.Host
-		var onConfirm func() tea.Cmd
-		title := "Reset cache"
-		body := "Wipe cache. Next runs start cold."
+		var title, body string
+		var run func() tea.Cmd
 		switch m.Cursor.Kind {
 		case CursorHost:
-			title = "Reset all caches on " + host
+			title = "Reset all caches on " + host + "?"
 			body = "Wipe every slot's cache on this host."
-			onConfirm = func() tea.Cmd { return CacheResetHostCmd(m.InventoryPath, host) }
+			run = func() tea.Cmd { return CacheResetHostCmd(m.InventoryPath, host) }
 		case CursorRepo:
 			repo := m.Cursor.Repo
-			title = fmt.Sprintf("Reset caches for %s on %s", repo, host)
+			title = fmt.Sprintf("Reset caches for %s on %s?", repo, host)
 			body = "Wipe the cache for every slot serving this repo on this host."
-			onConfirm = func() tea.Cmd {
-				return CacheResetRepoCmd(m.InventoryPath, host, repo, m.Hosts)
-			}
+			captured := m.Hosts
+			run = func() tea.Cmd { return CacheResetRepoCmd(m.InventoryPath, host, repo, captured) }
 		case CursorSlot:
 			slot := m.Cursor.Slot
-			onConfirm = func() tea.Cmd { return CacheResetSlotCmd(m.InventoryPath, host, slot) }
+			title = fmt.Sprintf("Reset cache for slot %d on %s?", slot, host)
+			body = "Wipe this slot's cache. Next run starts cold."
+			run = func() tea.Cmd { return CacheResetSlotCmd(m.InventoryPath, host, slot) }
 		}
-		mod := NewConfirmModal(title, body, onConfirm)
-		m.Modal = &mod
-		return m, nil
+		fwr := NewConfirmForm(title, body)
+		return m.openForm(fwr, func(result interface{}) tea.Cmd {
+			if confirmed, _ := result.(bool); confirmed {
+				return run()
+			}
+			return nil
+		})
 
 	case 'g':
-		mod := NewConfirmModal("GC orphan runners",
-			"Delete GitHub-side runners not represented in inventory.",
-			func() tea.Cmd { return GCCmd(m.InventoryPath) })
-		m.Modal = &mod
-		return m, nil
+		fwr := NewConfirmForm("GC orphan runners?",
+			"Delete GitHub-side runners not represented in inventory.")
+		return m.openForm(fwr, func(result interface{}) tea.Cmd {
+			if confirmed, _ := result.(bool); confirmed {
+				return GCCmd(m.InventoryPath)
+			}
+			return nil
+		})
 
 	case 'R':
 		m.Flash = &flash{Text: "refresh queued — pollers tick every 2s anyway", Until: time.Now().Add(2 * time.Second)}
 		return m, nil
 
 	case '?':
-		mod := NewConfirmModal("Keybindings",
+		fwr := NewConfirmForm("Keybindings",
 			"j/k or ↑/↓   move\n"+
-				"⏎            expand/collapse host\n"+
-				"d            drain (slot or host)\n"+
-				"D            remove host (drain + drop from inventory)\n"+
-				"r            reset cache (slot or host)\n"+
+				"⏎            expand/collapse host or repo group\n"+
+				"d            drain (host / repo / slot)\n"+
+				"D            remove host\n"+
+				"r            reset cache (host / repo / slot)\n"+
 				"g            gc orphan GitHub runners\n"+
-				"a            add slot(s) — picker of App-accessible repos\n"+
-				"A            add host (CLI only for v1 — use `bobsled host add`)\n"+
-				"p            add pool (text prompt: owner/name on cursor's host)\n"+
-				"P            remove pool (drain + drop from inventory)\n"+
-				"R            refresh (pollers tick automatically)\n"+
+				"a            add slot (picker on host; +1 on repo/slot)\n"+
+				"p            add pool by name\n"+
+				"P            remove pool\n"+
+				"R            refresh\n"+
 				"?            this help\n"+
-				"q / Ctrl-C   quit",
-			nil)
-		m.Modal = &mod
-		return m, nil
+				"q / Ctrl-C   quit")
+		return m.openForm(fwr, func(result interface{}) tea.Cmd { return nil })
 
 	case 'p':
 		if m.Cursor.Host == "" {
@@ -150,35 +160,32 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			return m, nil
 		}
 		host := m.Cursor.Host
-		mod := NewPromptModal(
-			"Add pool on "+host,
-			"Type owner/name. Count defaults to 1; spread = this host. (The GitHub App must already be installed on the repo.)",
-			func(text string) tea.Cmd {
-				return RepoAddCmd(m.InventoryPath, text, host, 1)
-			},
-		)
-		m.Modal = &mod
-		return m, nil
+		fwr := NewInputForm("Add pool on "+host,
+			"Type owner/name. Count defaults to 1; spread = this host.",
+			"owner/name")
+		return m.openForm(fwr, func(result interface{}) tea.Cmd {
+			repo, _ := result.(string)
+			if repo == "" {
+				return nil
+			}
+			return RepoAddCmd(m.InventoryPath, repo, host, 1)
+		})
 
 	case 'P':
-		// Determine the target repo from the cursor.
-		repo := ""
-		switch m.Cursor.Kind {
-		case CursorRepo:
-			repo = m.Cursor.Repo
-		case CursorSlot:
-			repo = m.Cursor.Repo
-		}
+		repo := m.Cursor.Repo
 		if repo == "" {
-			m.Flash = &flash{Text: "Put the cursor on a repo or slot row — `P` removes that repo's pool.", Until: time.Now().Add(3 * time.Second)}
+			m.Flash = &flash{Text: "Put the cursor on a repo or slot row.", Until: time.Now().Add(3 * time.Second)}
 			return m, nil
 		}
-		capturedRepo := repo
-		mod := NewConfirmModal("Remove pool "+repo,
-			"Drain every slot for this repo across the fleet, gc its GitHub-side runners, and drop the pool from inventory.",
-			func() tea.Cmd { return RepoRemoveCmd(m.InventoryPath, capturedRepo) })
-		m.Modal = &mod
-		return m, nil
+		captured := repo
+		fwr := NewConfirmForm("Remove pool "+repo+"?",
+			"Drain every slot for this repo across the fleet, gc its GitHub-side runners, and drop from inventory.")
+		return m.openForm(fwr, func(result interface{}) tea.Cmd {
+			if confirmed, _ := result.(bool); confirmed {
+				return RepoRemoveCmd(m.InventoryPath, captured)
+			}
+			return nil
+		})
 
 	case 'a':
 		if m.Cursor.Host == "" {

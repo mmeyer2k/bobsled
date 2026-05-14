@@ -29,6 +29,11 @@ func (m Model) renderView() string {
 	if m.Width == 0 {
 		return "loading…"
 	}
+	// When a huh form is active it owns the screen entirely — the bordered,
+	// centered look that huh provides replaces the normal tree view.
+	if m.Form != nil {
+		return m.Form.Form.View()
+	}
 	var b strings.Builder
 	b.WriteString(m.renderHeader())
 	b.WriteString("\n\n")
@@ -39,14 +44,6 @@ func (m Model) renderView() string {
 	b.WriteString(m.renderRecent())
 	b.WriteString("\n")
 	b.WriteString(m.renderFooter())
-	if m.Modal != nil {
-		b.WriteString("\n\n")
-		b.WriteString(m.Modal.Render(m.Width))
-	}
-	if m.Picker != nil {
-		b.WriteString("\n\n")
-		b.WriteString(m.Picker.Render())
-	}
 	return b.String()
 }
 
