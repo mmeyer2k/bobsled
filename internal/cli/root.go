@@ -20,6 +20,7 @@ func NewRoot() *cobra.Command {
 	root.PersistentFlags().StringVarP(&flagInventory, "inventory", "i", "inventory.yaml", "path to inventory.yaml")
 	root.AddCommand(newHostCmd())
 	root.AddCommand(newApplyCmd())
+	root.AddCommand(newDrainCmd())
 	return root
 }
 
