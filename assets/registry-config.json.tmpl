@@ -1,0 +1,31 @@
+{
+  "distSpecVersion": "1.1.0",
+  "storage": {
+    "rootDirectory": "/var/lib/registry",
+    "gc": true,
+    "gcDelay": "{{.GCRetention}}",
+    "gcInterval": "{{.GCInterval}}"
+  },
+  "http": {
+    "address": "0.0.0.0",
+    "port": "5000"
+  },
+  "log": {
+    "level": "info"
+  },
+  "extensions": {
+    "sync": {
+      "enable": true,
+      "registries": [{{range $i, $u := .Upstreams}}{{if $i}},{{end}}
+        {
+          "urls": ["{{$u.URL}}"],
+          "onDemand": true,
+          "tlsVerify": true,
+          "content": [
+            {"prefix": "**", "destination": "/{{$u.Name}}", "stripPrefix": false}
+          ]
+        }{{end}}
+      ]
+    }
+  }
+}

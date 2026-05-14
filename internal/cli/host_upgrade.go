@@ -3,16 +3,19 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/m-meyer2k/bobsled/internal/inventory"
+	"github.com/m-meyer2k/bobsled/internal/registry"
 	"github.com/m-meyer2k/bobsled/internal/ssh"
 	"github.com/spf13/cobra"
 )
 
 func newHostUpgradeCmd() *cobra.Command {
 	var (
-		mintBinary  string
-		imageDigest string
+		mintBinary     string
+		imageDigest    string
+		registryDigest string
 	)
 	c := &cobra.Command{
 		Use:   "upgrade <host>",
@@ -45,6 +48,39 @@ func newHostUpgradeCmd() *cobra.Command {
 					return err
 				}
 			}
+			if registryDigest != "" {
+				if !strings.HasPrefix(registryDigest, "sha256:") {
+					return fmt.Errorf("--registry-digest must start with sha256:")
+				}
+				line := fmt.Sprintf("BOBSLED_REGISTRY_DIGEST=%s\n", registryDigest)
+				if err := s.PutBytes([]byte(line), ".registry-image-digest.env.tmp"); err != nil {
+					return err
+				}
+				if _, err := s.Run("mv .registry-image-digest.env.tmp registry-image-digest.env"); err != nil {
+					return err
+				}
+			}
+			// Re-render registry config from inventory and push. Cheap and
+			// idempotent; lets operators apply registry.* changes without
+			// re-running host install. If config bytes change, restart.
+			reg := inv.LoadedRegistry()
+			regCfg, err := registry.RenderConfig(reg)
+			if err != nil {
+				return fmt.Errorf("render registry config: %w", err)
+			}
+			if err := s.PutBytes(regCfg, "registry-config.json"); err != nil {
+				return err
+			}
+			regsConf, err := registry.RenderRegistriesConf(reg)
+			if err != nil {
+				return fmt.Errorf("render registries.conf: %w", err)
+			}
+			if err := s.PutBytes(regsConf, "registries.conf"); err != nil {
+				return err
+			}
+			if _, err := s.Run("systemctl --user restart bobsled-registry.service"); err != nil {
+				return fmt.Errorf("restart registry after config update: %w", err)
+			}
 			if _, err := s.Run("systemctl --user daemon-reload"); err != nil {
 				return err
 			}
@@ -54,5 +90,6 @@ func newHostUpgradeCmd() *cobra.Command {
 	}
 	c.Flags().StringVar(&mintBinary, "mint-binary", "", "replacement bobsled-mint binary")
 	c.Flags().StringVar(&imageDigest, "image-digest", "", "new wrapper image digest")
+	c.Flags().StringVar(&registryDigest, "registry-digest", "", "new zot image digest (sha256:...); restarts the registry on this host")
 	return c
 }

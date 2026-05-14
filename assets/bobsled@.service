@@ -17,8 +17,10 @@ ExecStart=/usr/bin/podman run --rm --replace \
     --userns=keep-id:uid=1000,gid=1000 \
     --device=/dev/fuse \
     --tmpfs=/tmp \
+    --add-host=host.containers.internal:host-gateway \
     -v %t/bobsled/%i:/jit:ro \
     -v %h/.cache/bobsled/slots/%i/current:/cache \
+    -v %h/registries.conf:/home/podman/.config/containers/registries.conf:ro \
     bobsled:${BOBSLED_IMAGE_DIGEST}
 ExecStopPost=/bin/rm -rf %t/bobsled/%i
 Restart=on-failure

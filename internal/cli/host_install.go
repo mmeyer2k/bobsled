@@ -16,7 +16,7 @@ func newHostInstallCmd() *cobra.Command {
 	)
 	c := &cobra.Command{
 		Use:   "install <host>",
-		Short: "Push mint binary, systemd unit, config, app key, and image digest to a host",
+		Short: "Push mint binary, systemd units (wrapper + registry), configs, app key, and image digests to a host",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			name := args[0]
@@ -32,7 +32,7 @@ func newHostInstallCmd() *cobra.Command {
 			if keyLocal == "" {
 				keyLocal = expandHome(inv.GitHub.AppKey)
 			}
-			if err := installToHost(host.SSH, mintBinary, imageDigest, keyLocal, inv.GitHub.AppID, name); err != nil {
+			if err := installToHost(host.SSH, mintBinary, imageDigest, keyLocal, inv.GitHub.AppID, name, inv.LoadedRegistry()); err != nil {
 				return err
 			}
 			fmt.Printf("host %s installed (image=%s)\n", name, imageDigest)
