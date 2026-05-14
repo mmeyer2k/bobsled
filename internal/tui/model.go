@@ -239,6 +239,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Runs[v.M.Repo] = v.M.State
 		}
 		return m, waitForRunsMsg(v.Ch)
+
+	case ActionLogMsg:
+		return m.onActionLog(v)
+	case ActionResultMsg:
+		return m.onActionResult(v)
 	}
 	return m, nil
 }
