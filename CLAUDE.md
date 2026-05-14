@@ -96,7 +96,7 @@ The systemd template unit (`systemd/bobsled@.service`) is the only thing that ta
 - **`net/http` directly** for GitHub — no `go-github` SDK. Keep the surface small.
 - **No mocks at the GitHub boundary** in tests; use `httptest.NewServer` to spin up a real handler. The test in `internal/runner/mint_test.go` is the canonical example.
 - **Runner naming convention:** `bobsled-<host>-<slot>` (e.g. `bobsled-h1-7`). Encoded in `mint.Mint`. `gc` uses the `bobsled-` prefix to identify orphans owned by this orchestrator.
-- **GitHub labels convention:** mint passes only the custom labels (`bobsled`, `podman`, plus any pool-specific ones). The `self-hosted`/`linux`/`x64` labels are added automatically by actions/runner and must NOT be passed at registration.
+- **GitHub labels convention:** **JIT runner registration does NOT auto-add `self-hosted`/`linux`/`x64`** (verified by smoke test — those auto-labels only attach via the classic `./config.sh` registration flow). Anything you want on the runner must be in `state.yaml`'s labels list. Recommend `[self-hosted, linux, x64, bobsled, podman]` plus any pool-specific extras. The old "don't pass auto labels" advice was wrong for JIT.
 - **`go:embed` for assets.** `systemd/bobsled@.service` and `assets/bootstrap.sh` are embedded by `assets/assets.go`. The Makefile's `assets` target copies the canonical unit file into `assets/` before `go build` so the embed compiles. If you edit the unit, run `make assets` (or `make build`) before committing.
 
 ## Subcommand surface
@@ -127,9 +127,11 @@ Captured in the final review of the initial implementation:
 - `ls` reads `state.yaml` without `flock` (inconsistent with `apply` / `scale`).
 - `gc` reconciles against the desired allocation, not each host's `state.yaml` — could delete in-flight runners during apply drift.
 - `scale` doesn't `MarkFlagRequired("count")` in cobra; the manual `count < 0` check covers it but the UX is inconsistent with other required flags.
+- **409 conflict on restart**: if the wrapper container fails before consuming its JIT (e.g. mid-job crash), GitHub still has the runner registered, and the next mint hits `409 A runner with the name *** already exists`, restart-looping until `StartLimitBurst`. Mint should detect 409, look up the conflicting runner by name, delete it, and retry. `ghapp.ListRepoRunners` + `DeleteRepoRunner` are already wired — just need the error-path glue in `internal/runner/mint.go`.
 
 ## Threat model boundaries (don't relax without revisiting the spec)
 
-- Wrapper container runs `--read-only --userns=keep-id --cap-drop=ALL --security-opt=no-new-privileges` with a tmpfs `/tmp`. The inner podman uses fuse-overlayfs + its own user namespace.
+- Wrapper container runs `--userns=keep-id:uid=1000,gid=1000` (so JIT files written by the bobsled user are readable inside as `podman`) with `--tmpfs=/tmp` and `--device=/dev/fuse` (for the inner fuse-overlayfs). The container is ephemeral (`--rm`, one job, ~minutes).
+- **What we DON'T enforce, and why:** `--read-only` breaks actions/runner ($HOME writes). `--cap-drop=ALL` + `--security-opt=no-new-privileges` break the inner rootless podman (setuid `newuidmap` can't elevate). The threat model trades these for PiP support — the container is still user-namespaced and short-lived, and the spec's non-goal of "untrusted PR workflows" is what makes that trade acceptable.
 - The GitHub App key lives at `~bobsled/app-key.pem` mode 0600, readable only by the `bobsled` system user. Only `bobsled-mint` reads it.
 - The orchestrator never runs anything as root at runtime. `host bootstrap` is the only command that needs admin SSH; everything else connects as `bobsled@host`.
