@@ -36,6 +36,10 @@ func (m Model) renderView() string {
 	b.WriteString(m.renderRecent())
 	b.WriteString("\n")
 	b.WriteString(m.renderFooter())
+	if m.Modal != nil {
+		b.WriteString("\n\n")
+		b.WriteString(m.Modal.Render(m.Width))
+	}
 	return b.String()
 }
 

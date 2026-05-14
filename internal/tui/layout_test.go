@@ -38,3 +38,18 @@ func TestRender_StableSnapshot(t *testing.T) {
 	require.Contains(t, out, "active")
 	require.True(t, strings.Contains(out, "j/k") || strings.Contains(out, "?"), "footer keybindings present")
 }
+
+func TestRender_ShowsModalWhenOpen(t *testing.T) {
+	m := New(&inventory.Inventory{
+		Hosts: map[string]inventory.Host{"h1": {SSH: "bobsled@h1", Capacity: 4}},
+	}, nil, "inventory.yaml")
+	m.Width, m.Height = 80, 24
+	m.Hosts["h1"] = &poller.HostState{Name: "h1", Reachable: true, Capacity: 4}
+	m.Cursor = FirstCursor(m.Hosts, m.Expanded)
+	mod := NewConfirmModal("Drain host h1", "Continue?", nil)
+	m.Modal = &mod
+
+	out := stripANSI(m.View())
+	require.Contains(t, out, "Drain host h1")
+	require.Contains(t, out, "Type 'yes' to confirm")
+}

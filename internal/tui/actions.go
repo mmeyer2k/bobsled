@@ -4,6 +4,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"time"
 
@@ -48,9 +49,16 @@ func DrainHostCmd(inventoryPath, host string) tea.Cmd {
 
 func runAction(description, inventory string, args ...string) tea.Cmd {
 	return func() tea.Msg {
+		exe, err := os.Executable()
+		if err != nil {
+			exe = "bobsled"
+		}
 		full := append([]string{"--inventory", inventory}, args...)
-		cmd := exec.CommandContext(context.Background(), "./bin/bobsled", full...)
-		_, err := cmd.CombinedOutput()
-		return ActionResultMsg{Description: description, Err: err}
+		cmd := exec.CommandContext(context.Background(), exe, full...)
+		out, runErr := cmd.CombinedOutput()
+		if runErr != nil && len(out) > 0 {
+			runErr = fmt.Errorf("%w: %s", runErr, string(out))
+		}
+		return ActionResultMsg{Description: description, Err: runErr}
 	}
 }
