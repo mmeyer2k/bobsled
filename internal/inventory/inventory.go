@@ -5,14 +5,65 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
 type Inventory struct {
-	GitHub GitHubAuth      `yaml:"github"`
-	Hosts  map[string]Host `yaml:"hosts"`
-	Pools  []Pool          `yaml:"pools"`
+	GitHub   GitHubAuth      `yaml:"github"`
+	Hosts    map[string]Host `yaml:"hosts"`
+	Pools    []Pool          `yaml:"pools"`
+	Registry *Registry       `yaml:"registry,omitempty"`
+}
+
+type Registry struct {
+	ImageDigest string     `yaml:"image_digest"`
+	GCInterval  string     `yaml:"gc_interval"`
+	GCRetention string     `yaml:"gc_retention"`
+	Upstreams   []Upstream `yaml:"upstreams"`
+}
+
+type Upstream struct {
+	Name string `yaml:"name"`
+	URL  string `yaml:"url"`
+}
+
+// DefaultRegistryDigest is the pinned zot image. Bump when upgrading zot.
+const DefaultRegistryDigest = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
+func defaultUpstreams() []Upstream {
+	return []Upstream{
+		{Name: "docker.io", URL: "https://registry-1.docker.io"},
+		{Name: "ghcr.io", URL: "https://ghcr.io"},
+		{Name: "quay.io", URL: "https://quay.io"},
+	}
+}
+
+// LoadedRegistry returns the inventory's registry config with defaults filled in
+// for any unset fields. Always returns a non-nil pointer.
+func (inv *Inventory) LoadedRegistry() *Registry {
+	r := Registry{
+		ImageDigest: DefaultRegistryDigest,
+		GCInterval:  "1h",
+		GCRetention: "336h",
+		Upstreams:   defaultUpstreams(),
+	}
+	if inv.Registry != nil {
+		if inv.Registry.ImageDigest != "" {
+			r.ImageDigest = inv.Registry.ImageDigest
+		}
+		if inv.Registry.GCInterval != "" {
+			r.GCInterval = inv.Registry.GCInterval
+		}
+		if inv.Registry.GCRetention != "" {
+			r.GCRetention = inv.Registry.GCRetention
+		}
+		if len(inv.Registry.Upstreams) > 0 {
+			r.Upstreams = inv.Registry.Upstreams
+		}
+	}
+	return &r
 }
 
 type GitHubAuth struct {
@@ -80,6 +131,19 @@ func (inv *Inventory) validate() error {
 		}
 		if p.Count > cap {
 			return fmt.Errorf("inventory: pool[%d] (%s) count %d exceeds capacity %d", i, p.Repo, p.Count, cap)
+		}
+	}
+	if inv.Registry != nil {
+		for i, u := range inv.Registry.Upstreams {
+			if u.Name == "" {
+				return fmt.Errorf("inventory: registry.upstreams[%d] missing name", i)
+			}
+			if u.URL == "" {
+				return fmt.Errorf("inventory: registry.upstreams[%d] (%s) missing url", i, u.Name)
+			}
+		}
+		if d := inv.Registry.ImageDigest; d != "" && !strings.HasPrefix(d, "sha256:") {
+			return fmt.Errorf("inventory: registry.image_digest must start with sha256:")
 		}
 	}
 	return nil
