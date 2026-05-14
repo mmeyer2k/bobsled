@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/m-meyer2k/bobsled/internal/inventory"
+	"github.com/m-meyer2k/bobsled/internal/registry"
 	"github.com/m-meyer2k/bobsled/internal/ssh"
 	"github.com/spf13/cobra"
 )
@@ -58,9 +59,27 @@ func newHostUpgradeCmd() *cobra.Command {
 				if _, err := s.Run("mv .registry-image-digest.env.tmp registry-image-digest.env"); err != nil {
 					return err
 				}
-				if _, err := s.Run("systemctl --user restart bobsled-registry.service"); err != nil {
-					return fmt.Errorf("restart registry: %w", err)
-				}
+			}
+			// Re-render registry config from inventory and push. Cheap and
+			// idempotent; lets operators apply registry.* changes without
+			// re-running host install. If config bytes change, restart.
+			reg := inv.LoadedRegistry()
+			regCfg, err := registry.RenderConfig(reg)
+			if err != nil {
+				return fmt.Errorf("render registry config: %w", err)
+			}
+			if err := s.PutBytes(regCfg, "registry-config.json"); err != nil {
+				return err
+			}
+			regsConf, err := registry.RenderRegistriesConf(reg)
+			if err != nil {
+				return fmt.Errorf("render registries.conf: %w", err)
+			}
+			if err := s.PutBytes(regsConf, "registries.conf"); err != nil {
+				return err
+			}
+			if _, err := s.Run("systemctl --user restart bobsled-registry.service"); err != nil {
+				return fmt.Errorf("restart registry after config update: %w", err)
 			}
 			if _, err := s.Run("systemctl --user daemon-reload"); err != nil {
 				return err
