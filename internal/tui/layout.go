@@ -19,6 +19,9 @@ var (
 	cursorStyle    = lipgloss.NewStyle().Reverse(true)
 	footerStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	flashErrStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
+	keyStyle       = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
+	descStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	sepStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 )
 
 // renderView returns the full screen frame.
@@ -136,10 +139,35 @@ func (m Model) renderRecent() string {
 	return b.String()
 }
 
+// formatKeys renders a slice of (key, desc) pairs as "key desc   ·   key desc …".
+func formatKeys(pairs ...[2]string) string {
+	parts := make([]string, 0, len(pairs))
+	for _, kv := range pairs {
+		parts = append(parts, keyStyle.Render(kv[0])+" "+descStyle.Render(kv[1]))
+	}
+	return strings.Join(parts, descStyle.Render("  ·  "))
+}
+
 func (m Model) renderFooter() string {
-	row1 := footerStyle.Render("j/k:nav  ⏎:expand/collapse  R:refresh  ?:help  q:quit")
-	row2 := footerStyle.Render("a:add slot  A:add host  d:drain  D:remove host  r:reset cache  g:gc  l:logs")
-	help := row1 + "\n" + row2
+	row1 := formatKeys(
+		[2]string{"j/k", "nav"},
+		[2]string{"⏎", "expand"},
+		[2]string{"R", "refresh"},
+		[2]string{"?", "help"},
+		[2]string{"q", "quit"},
+	)
+	row2 := formatKeys(
+		[2]string{"a", "add slot"},
+		[2]string{"A", "add host"},
+		[2]string{"d", "drain"},
+		[2]string{"D", "remove host"},
+		[2]string{"r", "reset cache"},
+		[2]string{"g", "gc"},
+		[2]string{"l", "logs"},
+	)
+	sep := sepStyle.Render(strings.Repeat("─", m.Width))
+	help := sep + "\n" + row1 + "\n" + row2
+
 	if m.Flash != nil && time.Now().Before(m.Flash.Until) {
 		style := footerStyle
 		if m.Flash.IsError {

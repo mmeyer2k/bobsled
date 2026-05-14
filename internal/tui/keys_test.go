@@ -122,10 +122,23 @@ func TestKey_G_OpensGCModal(t *testing.T) {
 	require.Contains(t, mm.Modal.Title, "GC")
 }
 
-func TestKey_A_FlashesCLIHint(t *testing.T) {
+func TestKey_A_OnHostRowFlashes(t *testing.T) {
 	m := modelWithTwoHosts(t)
+	m.Cursor = Cursor{Host: "h1", Kind: CursorHost}
 	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
 	mm := mNew.(Model)
 	require.NotNil(t, mm.Flash)
-	require.Contains(t, mm.Flash.Text, "scale")
+	require.Contains(t, mm.Flash.Text, "slot row")
+}
+
+func TestKey_A_OnSlotInvokesScale(t *testing.T) {
+	m := modelWithTwoHosts(t)
+	// Set up a slot with an assigned repo so the scale path runs.
+	m.Hosts["h1"].Slots[1] = poller.SlotState{N: 1, Repo: "acme/foo"}
+	m.Cursor = Cursor{Host: "h1", Kind: CursorSlot, Slot: 1}
+	mNew, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	mm := mNew.(Model)
+	require.NotNil(t, cmd, "should dispatch a scale command")
+	require.NotNil(t, mm.Flash)
+	require.Contains(t, mm.Flash.Text, "scaling")
 }

@@ -70,6 +70,12 @@ func GCCmd(inventoryPath string) tea.Cmd {
 	return runAction("gc orphan runners", inventoryPath, "gc")
 }
 
+// ScaleCmd shells out to `bobsled scale --host h --repo r --count N`.
+func ScaleCmd(inventoryPath, host, repo string, count int) tea.Cmd {
+	desc := fmt.Sprintf("scale %s on %s to %d", repo, host, count)
+	return runAction(desc, inventoryPath, "scale", "--host", host, "--repo", repo, "--count", fmt.Sprint(count))
+}
+
 func runAction(description, inventory string, args ...string) tea.Cmd {
 	return func() tea.Msg {
 		exe, err := os.Executable()

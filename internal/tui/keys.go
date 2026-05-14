@@ -2,6 +2,7 @@
 package tui
 
 import (
+	"fmt"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -114,8 +115,31 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m, nil
 
 	case 'a':
-		m.Flash = &flash{Text: "v1: use `bobsled scale --host h --repo r --count N` (inline prompt coming).", Until: time.Now().Add(4 * time.Second)}
-		return m, nil
+		if m.Cursor.Kind != CursorSlot {
+			m.Flash = &flash{Text: "Put the cursor on a slot row — `a` adds +1 to that (host, repo).", Until: time.Now().Add(3 * time.Second)}
+			return m, nil
+		}
+		host := m.Cursor.Host
+		hostState := m.Hosts[host]
+		if hostState == nil {
+			return m, nil
+		}
+		repo := hostState.Slots[m.Cursor.Slot].Repo
+		if repo == "" {
+			m.Flash = &flash{Text: "This slot has no repo assigned yet — try again after the next poll.", Until: time.Now().Add(3 * time.Second)}
+			return m, nil
+		}
+		// Count current slots on this host serving this repo.
+		current := 0
+		for _, s := range hostState.Slots {
+			if s.Repo == repo {
+				current++
+			}
+		}
+		next := current + 1
+		cmd := ScaleCmd(m.InventoryPath, host, repo, next)
+		m.Flash = &flash{Text: fmt.Sprintf("scaling %s on %s to %d…", repo, host, next), Until: time.Now().Add(2 * time.Second)}
+		return m, cmd
 
 	case 'A':
 		m.Flash = &flash{Text: "v1: use `bobsled host add` (inline prompt coming).", Until: time.Now().Add(4 * time.Second)}
