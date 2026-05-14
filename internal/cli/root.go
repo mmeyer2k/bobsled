@@ -24,6 +24,7 @@ func NewRoot() *cobra.Command {
 	root.AddCommand(newLsCmd())
 	root.AddCommand(newGcCmd())
 	root.AddCommand(newCacheCmd())
+	root.AddCommand(newImageCmd())
 	return root
 }
 
