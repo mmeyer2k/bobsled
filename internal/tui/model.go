@@ -18,6 +18,15 @@ const (
 	runsInterval    = 15 * time.Second
 )
 
+// forceRedrawMsg is a no-op message used to trigger a Bubbletea re-render
+// immediately after a huh form closes (huh emits tea.Quit on completion which
+// we must discard, leaving the renderer stale until the next update).
+type forceRedrawMsg struct{}
+
+func forceRedrawCmd() tea.Cmd {
+	return func() tea.Msg { return forceRedrawMsg{} }
+}
+
 type Model struct {
 	Inv           *inventory.Inventory
 	Client        *ghapp.Client
@@ -214,18 +223,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.Form = nil
 				m.formOnSubmit = nil
 				if cb != nil {
-					return m, cb(result)
+					if action := cb(result); action != nil {
+						return m, tea.Batch(action, forceRedrawCmd())
+					}
 				}
-				return m, nil
+				return m, forceRedrawCmd()
 			case huh.StateAborted:
 				m.Form = nil
 				m.formOnSubmit = nil
-				return m, nil
+				return m, forceRedrawCmd()
 			default:
 				return m, cmd
 			}
 		}
 		return m.handleKey(v)
+	case forceRedrawMsg:
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.Width, m.Height = v.Width, v.Height
 		return m, nil

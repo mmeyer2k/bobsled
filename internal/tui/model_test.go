@@ -2,9 +2,12 @@
 package tui
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/huh"
 	"github.com/m-meyer2k/bobsled/internal/inventory"
 	"github.com/m-meyer2k/bobsled/internal/tui/poller"
 	"github.com/stretchr/testify/require"
@@ -62,6 +65,112 @@ func TestUpdate_HostsTickInitializesCursor(t *testing.T) {
 	mm := mNew.(Model)
 	require.Equal(t, "h1", mm.Cursor.Host, "cursor parked on first host after tick")
 	require.Equal(t, CursorHost, mm.Cursor.Kind)
+}
+
+// cmdYieldsMsg runs cmd() and returns the resulting tea.Msg.
+func cmdYieldsMsg(cmd tea.Cmd) tea.Msg {
+	if cmd == nil {
+		return nil
+	}
+	return cmd()
+}
+
+// batchContainsForceRedraw inspects a tea.BatchMsg to see if any of its cmds
+// produce a forceRedrawMsg. It also accepts a plain forceRedrawCmd.
+func batchContainsForceRedraw(cmd tea.Cmd) bool {
+	if cmd == nil {
+		return false
+	}
+	msg := cmd()
+	if _, ok := msg.(forceRedrawMsg); ok {
+		return true
+	}
+	// tea.BatchMsg is a []tea.Cmd under the covers; use reflection to walk it.
+	v := reflect.ValueOf(msg)
+	if v.Kind() != reflect.Slice {
+		return false
+	}
+	for i := range v.Len() {
+		inner, ok := v.Index(i).Interface().(tea.Cmd)
+		if !ok || inner == nil {
+			continue
+		}
+		if _, ok2 := inner().(forceRedrawMsg); ok2 {
+			return true
+		}
+	}
+	return false
+}
+
+// TestFormAbort_EmitsForceRedraw verifies that when a huh form is in
+// StateAborted the Update path clears m.Form and emits a forceRedrawCmd.
+func TestFormAbort_EmitsForceRedraw(t *testing.T) {
+	m := newTestModel(t)
+	fwr := NewConfirmForm("Test?", "desc")
+	// Force the form into StateAborted directly (mirroring the StateCompleted test).
+	fwr.Form.State = huh.StateAborted
+	m.Form = &fwr
+	m.formOnSubmit = func(interface{}) tea.Cmd { return nil }
+
+	// Any key triggers the switch on Form.State in Update.
+	mNew, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	mm := mNew.(Model)
+	require.Nil(t, mm.Form, "Form should be cleared after abort")
+	require.True(t, batchContainsForceRedraw(cmd), "forceRedrawMsg must be emitted on abort")
+}
+
+// TestFormComplete_EmitsForceRedraw verifies that when a huh form transitions
+// to StateCompleted the Update path returns a forceRedrawCmd so Bubbletea
+// re-renders the tree immediately (instead of waiting for the next key press).
+func TestFormComplete_EmitsForceRedraw(t *testing.T) {
+	m := newTestModel(t)
+	fwr := NewConfirmForm("Test?", "desc")
+	// Drive the form to StateCompleted by setting state directly.
+	fwr.Form.State = huh.StateCompleted
+	m.Form = &fwr
+
+	cbCalled := false
+	m.formOnSubmit = func(interface{}) tea.Cmd {
+		cbCalled = true
+		return nil // callback returns no further action
+	}
+
+	// Any key triggers the StateCompleted branch in Update.
+	mNew, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	mm := mNew.(Model)
+	require.Nil(t, mm.Form, "Form should be nil after completion")
+	require.True(t, cbCalled, "formOnSubmit callback should have been called")
+	require.True(t, batchContainsForceRedraw(cmd), "forceRedrawMsg must be emitted on completion")
+}
+
+// TestFormComplete_WithAction_EmitsForceRedraw checks the batch path where the
+// callback returns a non-nil action cmd.
+func TestFormComplete_WithAction_EmitsForceRedraw(t *testing.T) {
+	m := newTestModel(t)
+	fwr := NewConfirmForm("Test?", "desc")
+	fwr.Form.State = huh.StateCompleted
+	m.Form = &fwr
+
+	actionMsg := struct{ name string }{"sentinel"}
+	m.formOnSubmit = func(interface{}) tea.Cmd {
+		return func() tea.Msg { return actionMsg }
+	}
+
+	mNew, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	mm := mNew.(Model)
+	require.Nil(t, mm.Form, "Form should be nil after completion")
+	require.True(t, batchContainsForceRedraw(cmd), "forceRedrawMsg must be present in batch cmd")
+}
+
+// TestForceRedrawMsg_IsNoOp verifies that Update handles forceRedrawMsg without
+// side-effects — it exists only to trigger a render cycle.
+func TestForceRedrawMsg_IsNoOp(t *testing.T) {
+	m := newTestModel(t)
+	m.Cursor.Host = "h1" // set something so we can check it's unchanged
+	mNew, cmd := m.Update(forceRedrawMsg{})
+	mm := mNew.(Model)
+	require.Equal(t, "h1", mm.Cursor.Host, "forceRedrawMsg should not mutate model")
+	require.Nil(t, cmd, "forceRedrawMsg handler should return nil cmd")
 }
 
 type stringErr string
