@@ -31,6 +31,16 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.Cursor = NextCursor(m.Cursor, m.Hosts, m.Expanded)
 	case 'k':
 		m.Cursor = PrevCursor(m.Cursor, m.Hosts, m.Expanded)
+	case 'd':
+		title := "Drain slot"
+		body := "Disable this slot. Existing jobs run to completion."
+		if m.Cursor.Kind == CursorHost {
+			title = "Drain host " + m.Cursor.Host
+			body = "Disable every slot on this host."
+		}
+		mod := NewConfirmModal(title, body, nil) // Action wired in Task 20
+		m.Modal = &mod
+		return m, nil
 	}
 	return m, nil
 }

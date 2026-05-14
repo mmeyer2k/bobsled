@@ -194,6 +194,20 @@ type flash struct {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch v := msg.(type) {
 	case tea.KeyMsg:
+		if m.Modal != nil {
+			next := m.Modal.OnKey(v)
+			m.Modal = &next
+			if next.Cancelled {
+				m.Modal = nil
+				return m, nil
+			}
+			if v.Type == tea.KeyEnter && next.ReadyToConfirm() {
+				cmd := next.Confirm()
+				m.Modal = nil
+				return m, cmd
+			}
+			return m, nil
+		}
 		return m.handleKey(v)
 	case tea.WindowSizeMsg:
 		m.Width, m.Height = v.Width, v.Height

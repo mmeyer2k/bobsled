@@ -54,3 +54,27 @@ func TestKey_Q_Quits(t *testing.T) {
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	require.NotNil(t, cmd, "q must return tea.Quit")
 }
+
+func TestKey_D_OpensDrainSlotModal(t *testing.T) {
+	m := modelWithTwoHosts(t)
+	m.Cursor = Cursor{Host: "h1", Kind: CursorSlot, Slot: 1}
+	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	mm := mNew.(Model)
+	require.NotNil(t, mm.Modal)
+	require.Contains(t, mm.Modal.Title, "Drain slot")
+}
+
+func TestKey_RoutedToModalWhenOpen(t *testing.T) {
+	m := modelWithTwoHosts(t)
+	m.Cursor = Cursor{Host: "h1", Kind: CursorSlot, Slot: 1}
+	m, _ = updateOnce(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	m, _ = updateOnce(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	m, _ = updateOnce(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	m, _ = updateOnce(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	require.True(t, m.Modal.ReadyToConfirm())
+}
+
+func updateOnce(m Model, msg tea.Msg) (Model, tea.Cmd) {
+	r, c := m.Update(msg)
+	return r.(Model), c
+}
