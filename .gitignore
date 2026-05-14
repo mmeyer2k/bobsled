@@ -10,3 +10,4 @@ vendor/
 .env
 .envrc
 inventory.yaml/.idea/
+/inventory.yaml
