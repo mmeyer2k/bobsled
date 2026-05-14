@@ -12,7 +12,7 @@ RuntimeDirectoryMode=0700
 ExecStartPre=%h/.local/bin/bobsled-mint \
     --instance %i \
     --output %t/bobsled/%i/jit.json
-ExecStart=/usr/bin/podman run --rm \
+ExecStart=/usr/bin/podman run --rm --replace \
     --name=bobsled-%i \
     --userns=keep-id:uid=1000,gid=1000 \
     --device=/dev/fuse \
