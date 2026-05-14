@@ -122,25 +122,26 @@ func TestKey_G_OpensGCModal(t *testing.T) {
 	require.Contains(t, mm.Modal.Title, "GC")
 }
 
-func TestKey_A_OnHostRowFlashes(t *testing.T) {
+func TestKey_A_NoClientFlashes(t *testing.T) {
+	// modelWithTwoHosts passes nil client; 'a' should flash a clear error.
 	m := modelWithTwoHosts(t)
 	m.Cursor = Cursor{Host: "h1", Kind: CursorHost}
 	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
 	mm := mNew.(Model)
 	require.NotNil(t, mm.Flash)
-	require.Contains(t, mm.Flash.Text, "slot row")
+	require.Contains(t, mm.Flash.Text, "No GitHub client")
 }
 
-func TestKey_A_OnSlotInvokesScale(t *testing.T) {
+func TestKey_A_OnSlotNoClientFlashes(t *testing.T) {
+	// Even on a slot row, 'a' now routes through the picker flow and needs a client.
 	m := modelWithTwoHosts(t)
-	// Set up a slot with an assigned repo so the scale path runs.
 	m.Hosts["h1"].Slots[1] = poller.SlotState{N: 1, Repo: "acme/foo"}
 	m.Cursor = Cursor{Host: "h1", Kind: CursorSlot, Slot: 1}
 	mNew, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
 	mm := mNew.(Model)
-	require.NotNil(t, cmd, "should dispatch a scale command")
+	require.Nil(t, cmd, "no client → no async cmd")
 	require.NotNil(t, mm.Flash)
-	require.Contains(t, mm.Flash.Text, "scaling")
+	require.Contains(t, mm.Flash.Text, "No GitHub client")
 }
 
 func TestKey_P_OnSlotOpensRemovePoolModal(t *testing.T) {

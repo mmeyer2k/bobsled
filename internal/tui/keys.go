@@ -2,7 +2,6 @@
 package tui
 
 import (
-	"fmt"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -105,7 +104,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 				"D            remove host (drain + drop from inventory)\n"+
 				"r            reset cache (slot or host)\n"+
 				"g            gc orphan GitHub runners\n"+
-				"a            add slot (CLI only for v1 — use `bobsled scale`)\n"+
+				"a            add slot(s) — picker of App-accessible repos\n"+
 				"A            add host (CLI only for v1 — use `bobsled host add`)\n"+
 				"p            add pool (text prompt: owner/name on cursor's host)\n"+
 				"P            remove pool (drain + drop from inventory)\n"+
@@ -158,31 +157,17 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m, nil
 
 	case 'a':
-		if m.Cursor.Kind != CursorSlot {
-			m.Flash = &flash{Text: "Put the cursor on a slot row — `a` adds +1 to that (host, repo).", Until: time.Now().Add(3 * time.Second)}
+		if m.Cursor.Host == "" {
+			m.Flash = &flash{Text: "No host under cursor — wait for the first poll.", Until: time.Now().Add(3 * time.Second)}
 			return m, nil
 		}
-		host := m.Cursor.Host
-		hostState := m.Hosts[host]
-		if hostState == nil {
+		if m.Client == nil {
+			m.Flash = &flash{Text: "No GitHub client available; can't list repos.", IsError: true, Until: time.Now().Add(3 * time.Second)}
 			return m, nil
 		}
-		repo := hostState.Slots[m.Cursor.Slot].Repo
-		if repo == "" {
-			m.Flash = &flash{Text: "This slot has no repo assigned yet — try again after the next poll.", Until: time.Now().Add(3 * time.Second)}
-			return m, nil
-		}
-		// Count current slots on this host serving this repo.
-		current := 0
-		for _, s := range hostState.Slots {
-			if s.Repo == repo {
-				current++
-			}
-		}
-		next := current + 1
-		cmd := ScaleCmd(m.InventoryPath, host, repo, next)
-		m.Flash = &flash{Text: fmt.Sprintf("scaling %s on %s to %d…", repo, host, next), Until: time.Now().Add(2 * time.Second)}
-		return m, cmd
+		m.pickerHost = m.Cursor.Host
+		m.Flash = &flash{Text: "loading repos…", Until: time.Now().Add(3 * time.Second)}
+		return m, LoadAccessibleReposCmd(m.Client)
 
 	case 'A':
 		m.Flash = &flash{Text: "v1: use `bobsled host add` (inline prompt coming).", Until: time.Now().Add(4 * time.Second)}

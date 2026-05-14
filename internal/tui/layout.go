@@ -43,6 +43,10 @@ func (m Model) renderView() string {
 		b.WriteString("\n\n")
 		b.WriteString(m.Modal.Render(m.Width))
 	}
+	if m.Picker != nil {
+		b.WriteString("\n\n")
+		b.WriteString(m.Picker.Render())
+	}
 	return b.String()
 }
 

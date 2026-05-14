@@ -27,10 +27,12 @@ type Model struct {
 	Errs          map[string]string // source label → last error
 	InventoryPath string
 
-	Cursor    Cursor
-	Expanded  map[string]bool
-	Modal     *Modal
-	Inline    *InlinePrompt
+	Cursor     Cursor
+	Expanded   map[string]bool
+	Modal      *Modal
+	Picker     *Picker
+	pickerHost string
+	Inline     *InlinePrompt
 	StatusLog *ringBuffer
 	Flash     *flash
 	Paused    bool
@@ -208,6 +210,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.Picker != nil {
+			next, outcome := m.Picker.OnKey(v)
+			m.Picker = &next
+			switch outcome {
+			case PickerCancelled:
+				var cmd tea.Cmd
+				if next.OnCancel != nil {
+					cmd = next.OnCancel()
+				}
+				m.Picker = nil
+				return m, cmd
+			case PickerSubmitted:
+				picked := next.Picked()
+				cmd := next.OnPick(picked)
+				m.Picker = nil
+				return m, cmd
+			}
+			return m, nil
+		}
 		return m.handleKey(v)
 	case tea.WindowSizeMsg:
 		m.Width, m.Height = v.Width, v.Height
@@ -248,6 +269,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.onActionLog(v)
 	case ActionResultMsg:
 		return m.onActionResult(v)
+	case AccessibleReposLoadedMsg:
+		if v.Err != nil {
+			m.Flash = &flash{Text: "list repos failed: " + v.Err.Error(), IsError: true, Until: time.Now().Add(5 * time.Second)}
+			return m, nil
+		}
+		host := m.pickerHost
+		if host == "" {
+			return m, nil
+		}
+		invPath := m.InventoryPath
+		p := NewPicker(
+			"Pools on "+host,
+			"Pick repos to add a slot for. Existing pools scale up; new ones get created.",
+			v.Repos,
+			func(picked []string) tea.Cmd {
+				return AddPoolsCmd(invPath, host, picked, m.Hosts)
+			},
+		)
+		m.Picker = &p
+		return m, nil
 	}
 	return m, nil
 }

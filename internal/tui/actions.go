@@ -9,6 +9,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/m-meyer2k/bobsled/internal/ghapp"
+	"github.com/m-meyer2k/bobsled/internal/tui/poller"
 )
 
 // ActionLogMsg is emitted by long-running actions as they produce output.
@@ -102,4 +104,67 @@ func runAction(description, inventory string, args ...string) tea.Cmd {
 		}
 		return ActionResultMsg{Description: description, Err: runErr}
 	}
+}
+
+// AccessibleReposLoadedMsg carries the result of ListAccessibleRepos.
+type AccessibleReposLoadedMsg struct {
+	Repos []string
+	Err   error
+}
+
+// LoadAccessibleReposCmd kicks off the API call to list every repo the App
+// can manage.
+func LoadAccessibleReposCmd(client *ghapp.Client) tea.Cmd {
+	return func() tea.Msg {
+		if client == nil {
+			return AccessibleReposLoadedMsg{Err: fmt.Errorf("no ghapp client")}
+		}
+		repos, err := client.ListAccessibleRepos(context.Background())
+		return AccessibleReposLoadedMsg{Repos: repos, Err: err}
+	}
+}
+
+// AddPoolsCmd handles each picked repo: scale up if present, repo-add if new.
+func AddPoolsCmd(inventoryPath, host string, repos []string, hostStates map[string]*poller.HostState) tea.Cmd {
+	return func() tea.Msg {
+		for _, repo := range repos {
+			currentOnHost := 0
+			if h := hostStates[host]; h != nil {
+				for _, s := range h.Slots {
+					if s.Repo == repo {
+						currentOnHost++
+					}
+				}
+			}
+			if currentOnHost > 0 {
+				// existing pool on this host → scale up by 1
+				if err := runActionSync(inventoryPath, "scale", "--host", host, "--repo", repo, "--count", fmt.Sprint(currentOnHost+1)); err != nil {
+					return ActionResultMsg{Description: "scale " + repo, Err: err}
+				}
+				continue
+			}
+			// not on this host (or new repo) → repo add (or scale if pool exists elsewhere)
+			if err := runActionSync(inventoryPath, "repo", "add", repo, "--host", host, "--count", "1"); err != nil {
+				// Pool may already exist on other hosts; try scale instead.
+				if err2 := runActionSync(inventoryPath, "scale", "--host", host, "--repo", repo, "--count", "1"); err2 != nil {
+					return ActionResultMsg{Description: "add " + repo, Err: err2}
+				}
+			}
+		}
+		return ActionResultMsg{Description: fmt.Sprintf("added/scaled %d pools on %s", len(repos), host)}
+	}
+}
+
+// runActionSync invokes ./bin/bobsled <args> synchronously, returning any error.
+func runActionSync(inventory string, args ...string) error {
+	exe, err := os.Executable()
+	if err != nil {
+		exe = "bobsled"
+	}
+	full := append([]string{"--inventory", inventory}, args...)
+	out, err := exec.CommandContext(context.Background(), exe, full...).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%w: %s", err, string(out))
+	}
+	return nil
 }
