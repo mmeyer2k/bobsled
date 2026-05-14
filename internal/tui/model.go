@@ -220,6 +220,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			delete(m.Errs, "hosts/"+v.M.Host)
 			m.Hosts[v.M.Host] = v.M.State
 		}
+		// First valid tick: park the cursor on the first host.
+		if m.Cursor.Host == "" && len(m.Hosts) > 0 {
+			m.Cursor = FirstCursor(m.Hosts, m.Expanded)
+		}
 		return m, waitForHostsMsg(v.Ch)
 
 	case runnersTickMsg:

@@ -51,6 +51,19 @@ func TestUpdate_RecordsErrorBySource(t *testing.T) {
 	require.Contains(t, mm.Errs["hosts/h1"], "boom")
 }
 
+func TestUpdate_HostsTickInitializesCursor(t *testing.T) {
+	m := newTestModel(t)
+	require.Equal(t, "", m.Cursor.Host, "cursor starts empty")
+	st := &poller.HostState{
+		Name: "h1", Reachable: true,
+		Slots: map[int]poller.SlotState{1: {N: 1, UnitState: "active"}},
+	}
+	mNew, _ := m.Update(hostsTickMsg{M: poller.HostsMsg{Host: "h1", State: st}})
+	mm := mNew.(Model)
+	require.Equal(t, "h1", mm.Cursor.Host, "cursor parked on first host after tick")
+	require.Equal(t, CursorHost, mm.Cursor.Kind)
+}
+
 type stringErr string
 
 func (e stringErr) Error() string { return string(e) }
