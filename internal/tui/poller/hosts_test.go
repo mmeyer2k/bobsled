@@ -24,6 +24,9 @@ func fakeSSH(t *testing.T, stdout string, exitCode int) {
 func TestProbeHost_Parses(t *testing.T) {
 	stdout := "bobsled@1.service loaded active running bobsled GitHub Actions runner slot 1\n" +
 		"bobsled@2.service loaded activating start-pre bobsled GitHub Actions runner slot 2\n" +
+		"---UNITFILES---\n" +
+		"bobsled@1.service disabled enabled\n" +
+		"bobsled@2.service enabled enabled\n" +
 		"---STATE---\n" +
 		"repos:\n  acme/foo: {labels: [bobsled]}\n" +
 		"instances:\n  1: {repo: acme/foo}\n  2: {repo: acme/foo}\n"
@@ -35,6 +38,8 @@ func TestProbeHost_Parses(t *testing.T) {
 	require.Equal(t, "active", st.Slots[1].UnitState)
 	require.Equal(t, "activating", st.Slots[2].UnitState)
 	require.Equal(t, "acme/foo", st.Slots[1].Repo)
+	require.False(t, st.Slots[1].Enabled, "slot 1 was marked disabled")
+	require.True(t, st.Slots[2].Enabled, "slot 2 is enabled")
 }
 
 func TestProbeHost_SSHFails(t *testing.T) {
@@ -46,7 +51,7 @@ func TestProbeHost_SSHFails(t *testing.T) {
 }
 
 func TestHostsPoller_EmitsOnEachTick(t *testing.T) {
-	fakeSSH(t, "---STATE---\n", 0)
+	fakeSSH(t, "---UNITFILES---\n---STATE---\n", 0)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

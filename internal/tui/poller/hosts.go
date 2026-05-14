@@ -16,6 +16,7 @@ import (
 type SlotState struct {
 	N         int
 	UnitState string
+	Enabled   bool
 	Repo      string
 	Container string
 	StartedAt time.Time
@@ -35,9 +36,11 @@ type HostState struct {
 // error in LastError; the function returns an error only on truly unexpected
 // local failures (e.g. exec failed locally).
 func ProbeHost(ctx context.Context, mux *SSHMux, target string) (*HostState, error) {
-	args := append(mux.Args(target), target,
-		`systemctl --user list-units 'bobsled@*' --all --no-legend --plain --no-pager 2>/dev/null; `+
-			`echo '---STATE---'; cat state.yaml 2>/dev/null`)
+	script := `systemctl --user list-units 'bobsled@*' --all --no-legend --plain --no-pager 2>/dev/null; ` +
+		`echo '---UNITFILES---'; ` +
+		`systemctl --user list-unit-files 'bobsled@*' --no-legend --no-pager 2>/dev/null; ` +
+		`echo '---STATE---'; cat state.yaml 2>/dev/null`
+	args := append(mux.Args(target), target, script)
 	cmd := exec.CommandContext(ctx, "ssh", args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -54,11 +57,13 @@ func ProbeHost(ctx context.Context, mux *SSHMux, target string) (*HostState, err
 		return st, nil
 	}
 	st.Reachable = true
-	parts := strings.SplitN(stdout.String(), "---STATE---", 2)
-	parseUnits(parts[0], st)
-	if len(parts) == 2 {
-		parseState(parts[1], st)
-	}
+
+	out := stdout.String()
+	unitsPart, rest, _ := strings.Cut(out, "---UNITFILES---")
+	unitFilesPart, statePart, _ := strings.Cut(rest, "---STATE---")
+	parseUnits(unitsPart, st)
+	parseUnitFiles(unitFilesPart, st)
+	parseState(statePart, st)
 	return st, nil
 }
 
@@ -73,6 +78,21 @@ func parseUnits(s string, st *HostState) {
 		ss := st.Slots[n]
 		ss.N = n
 		ss.UnitState = f[2] // active / activating / failed / inactive
+		st.Slots[n] = ss
+	}
+}
+
+func parseUnitFiles(s string, st *HostState) {
+	for _, line := range strings.Split(s, "\n") {
+		f := strings.Fields(line)
+		if len(f) < 2 || !strings.HasPrefix(f[0], "bobsled@") {
+			continue
+		}
+		var n int
+		_, _ = fmt.Sscanf(f[0], "bobsled@%d.service", &n)
+		ss := st.Slots[n]
+		ss.N = n
+		ss.Enabled = f[1] == "enabled"
 		st.Slots[n] = ss
 	}
 }

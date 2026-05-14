@@ -25,7 +25,7 @@ func TestRender_StableSnapshot(t *testing.T) {
 	m.Width, m.Height = 80, 24
 	m.Hosts["h1"] = &poller.HostState{
 		Name: "h1", Reachable: true, Capacity: 4,
-		Slots: map[int]poller.SlotState{1: {N: 1, UnitState: "active", Repo: "acme/foo"}},
+		Slots: map[int]poller.SlotState{1: {N: 1, UnitState: "active", Enabled: true, Repo: "acme/foo"}},
 	}
 	m.Runners["acme/foo"] = &poller.RepoRunners{
 		Runners: []ghapp.RunnerRef{{ID: 1, Name: "bobsled-h1-1"}},

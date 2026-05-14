@@ -101,18 +101,30 @@ func (m Model) renderRow(r Row) string {
 		return "  " + hostHeader.Render(fmt.Sprintf("%s %s (%d)", marker, r.Repo, r.SlotCount))
 
 	default: // RowSlot
+		label := r.Slot.UnitState
 		stateStyle := slotActive
-		switch r.Slot.UnitState {
-		case "activating":
-			stateStyle = slotActivating
-		case "failed":
-			stateStyle = slotFailed
+		if !r.Slot.Enabled {
+			// disabled but still doing whatever it was doing → draining
+			if r.Slot.UnitState == "active" || r.Slot.UnitState == "activating" {
+				label = "draining"
+				stateStyle = slotActivating // amber
+			} else {
+				label = "disabled"
+				stateStyle = slotFailed // dim red
+			}
+		} else {
+			switch r.Slot.UnitState {
+			case "activating":
+				stateStyle = slotActivating
+			case "failed":
+				stateStyle = slotFailed
+			}
 		}
 		runner := r.RunnerName
 		if runner == "" {
 			runner = "—"
 		}
-		return fmt.Sprintf("      %d  %s  %s", r.Slot.N, stateStyle.Render(r.Slot.UnitState), runner)
+		return fmt.Sprintf("      %d  %s  %s", r.Slot.N, stateStyle.Render(label), runner)
 	}
 }
 
