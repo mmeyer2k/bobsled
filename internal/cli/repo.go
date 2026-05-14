@@ -2,9 +2,13 @@
 package cli
 
 import (
+	"context"
 	"fmt"
-	"os/exec"
+	"net/http"
+	"strings"
+	"time"
 
+	"github.com/m-meyer2k/bobsled/internal/ghapp"
 	"github.com/m-meyer2k/bobsled/internal/inventory"
 	"github.com/spf13/cobra"
 )
@@ -125,11 +129,41 @@ func newRepoRemoveCmd() *cobra.Command {
 				return err
 			}
 
-			// 3) Optionally clean up GitHub-side runners. Even after apply has
-			//    disabled the units, the runner may still be registered on the
-			//    GitHub side; `bobsled gc` handles that.
+			// 3) Clean up GitHub-side runner registrations directly. Can't
+			//    delegate to `bobsled gc` here: gc walks inv.Pools to decide
+			//    what's expected, and the pool we want to clean up is already
+			//    gone from inventory. Retry each call up to 3 times, 5s apart.
 			if !leaveRunners {
-				_ = exec.Command("./bin/bobsled", "--inventory", flagInventory, "gc").Run()
+				client := &ghapp.Client{
+					APIBase: "https://api.github.com",
+					AppID:   inv.GitHub.AppID,
+					KeyPath: expandHome(inv.GitHub.AppKey),
+					HTTP:    &http.Client{Timeout: 30 * time.Second},
+					Now:     time.Now,
+				}
+				ctx := context.Background()
+				var runners []ghapp.RunnerRef
+				if lerr := retryAPI(func() error {
+					var e error
+					runners, e = client.ListRepoRunners(ctx, repo)
+					return e
+				}, 3, 5*time.Second); lerr != nil {
+					fmt.Printf("warning: list github runners for %s: %v\n", repo, lerr)
+				} else {
+					for _, r := range runners {
+						if !strings.HasPrefix(r.Name, "bobsled-") {
+							continue
+						}
+						runner := r
+						if derr := retryAPI(func() error {
+							return client.DeleteRepoRunner(ctx, repo, runner.ID)
+						}, 3, 5*time.Second); derr != nil {
+							fmt.Printf("warning: delete github runner %s id=%d: %v\n", runner.Name, runner.ID, derr)
+							continue
+						}
+						fmt.Printf("deleted github runner %s\n", runner.Name)
+					}
+				}
 			}
 
 			fmt.Printf("removed pool %s (was count=%d, spread=%v)\n", repo, poolCount, poolSpread)
