@@ -89,3 +89,37 @@ func parseState(s string, st *HostState) {
 		st.Slots[n] = ss
 	}
 }
+
+type HostsMsg struct {
+	Host  string
+	State *HostState
+	Err   error
+}
+
+// HostsPoller probes each target on an interval and sends results to emit.
+// One goroutine per target so a slow host doesn't block the others. Stops on
+// ctx done.
+func HostsPoller(ctx context.Context, mux *SSHMux, targets []string, interval time.Duration, emit chan<- HostsMsg) {
+	for _, t := range targets {
+		go hostLoop(ctx, mux, t, interval, emit)
+	}
+	<-ctx.Done()
+}
+
+func hostLoop(ctx context.Context, mux *SSHMux, target string, interval time.Duration, emit chan<- HostsMsg) {
+	tick := time.NewTicker(interval)
+	defer tick.Stop()
+	for {
+		st, err := ProbeHost(ctx, mux, target)
+		select {
+		case <-ctx.Done():
+			return
+		case emit <- HostsMsg{Host: target, State: st, Err: err}:
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -42,4 +43,25 @@ func TestProbeHost_SSHFails(t *testing.T) {
 	require.NoError(t, err, "non-zero exit is wrapped, not returned as Go error")
 	require.False(t, st.Reachable)
 	require.NotEmpty(t, st.LastError)
+}
+
+func TestHostsPoller_EmitsOnEachTick(t *testing.T) {
+	fakeSSH(t, "---STATE---\n", 0)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	emit := make(chan HostsMsg, 4)
+	go HostsPoller(ctx, NewSSHMux(), []string{"bobsled@h1"}, 10*time.Millisecond, emit)
+
+	got := 0
+	deadline := time.After(200 * time.Millisecond)
+	for got < 3 {
+		select {
+		case <-emit:
+			got++
+		case <-deadline:
+			t.Fatalf("only got %d ticks", got)
+		}
+	}
 }
