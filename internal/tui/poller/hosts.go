@@ -36,9 +36,13 @@ type HostState struct {
 // error in LastError; the function returns an error only on truly unexpected
 // local failures (e.g. exec failed locally).
 func ProbeHost(ctx context.Context, mux *SSHMux, target string) (*HostState, error) {
+	// `list-unit-files` only returns the template (`bobsled@.service`), not
+	// the per-instance units. The enabled instances exist as symlinks in
+	// `default.target.wants/`; listing that dir is the reliable way to know
+	// which slots are currently enabled.
 	script := `systemctl --user list-units 'bobsled@*' --all --no-legend --plain --no-pager 2>/dev/null; ` +
-		`echo '---UNITFILES---'; ` +
-		`systemctl --user list-unit-files 'bobsled@*' --no-legend --no-pager 2>/dev/null; ` +
+		`echo '---ENABLED---'; ` +
+		`ls -1 $HOME/.config/systemd/user/default.target.wants/ 2>/dev/null | grep '^bobsled@' || true; ` +
 		`echo '---STATE---'; cat state.yaml 2>/dev/null`
 	args := append(mux.Args(target), target, script)
 	cmd := exec.CommandContext(ctx, "ssh", args...)
@@ -59,10 +63,10 @@ func ProbeHost(ctx context.Context, mux *SSHMux, target string) (*HostState, err
 	st.Reachable = true
 
 	out := stdout.String()
-	unitsPart, rest, _ := strings.Cut(out, "---UNITFILES---")
-	unitFilesPart, statePart, _ := strings.Cut(rest, "---STATE---")
+	unitsPart, rest, _ := strings.Cut(out, "---ENABLED---")
+	enabledPart, statePart, _ := strings.Cut(rest, "---STATE---")
 	parseUnits(unitsPart, st)
-	parseUnitFiles(unitFilesPart, st)
+	parseEnabled(enabledPart, st)
 	parseState(statePart, st)
 	return st, nil
 }
@@ -84,19 +88,21 @@ func parseUnits(s string, st *HostState) {
 	}
 }
 
-func parseUnitFiles(s string, st *HostState) {
+// parseEnabled reads the output of `ls .../default.target.wants/` — one
+// `bobsled@N.service` symlink per enabled slot.
+func parseEnabled(s string, st *HostState) {
 	for _, line := range strings.Split(s, "\n") {
-		f := strings.Fields(line)
-		if len(f) < 2 || !strings.HasPrefix(f[0], "bobsled@") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "bobsled@") {
 			continue
 		}
 		var n int
-		if _, err := fmt.Sscanf(f[0], "bobsled@%d.service", &n); err != nil || n <= 0 {
-			continue // skip the template `bobsled@.service` entry
+		if _, err := fmt.Sscanf(line, "bobsled@%d.service", &n); err != nil || n <= 0 {
+			continue
 		}
 		ss := st.Slots[n]
 		ss.N = n
-		ss.Enabled = f[1] == "enabled"
+		ss.Enabled = true
 		st.Slots[n] = ss
 	}
 }
