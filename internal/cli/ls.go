@@ -24,12 +24,17 @@ func newLsCmd() *cobra.Command {
 				return err
 			}
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "HOST\tSLOT\tSTATE\tREPO")
+			fmt.Fprintln(w, "HOST\tREGISTRY\tSLOT\tSTATE\tREPO")
 			for name, host := range inv.Hosts {
 				s := &ssh.Client{Target: host.SSH}
+				regOut, _ := s.Run("systemctl --user is-active bobsled-registry.service 2>&1 || true")
+				regStatus := strings.TrimSpace(regOut)
+				if regStatus == "" {
+					regStatus = "unknown"
+				}
 				list, err := s.Run("systemctl --user list-units 'bobsled@*' --all --no-legend --plain")
 				if err != nil {
-					fmt.Fprintf(w, "%s\t-\tERROR\t%v\n", name, err)
+					fmt.Fprintf(w, "%s\t%s\t-\tERROR\t%v\n", name, regStatus, err)
 					continue
 				}
 				stateYAML, _ := s.Run("cat state.yaml 2>/dev/null || true")
@@ -46,7 +51,7 @@ func newLsCmd() *cobra.Command {
 					if inst, ok := st.Instances[slot]; ok {
 						repo = inst.Repo
 					}
-					fmt.Fprintf(w, "%s\t%d\t%s\t%s\n", name, slot, f[2], repo)
+					fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\n", name, regStatus, slot, f[2], repo)
 				}
 			}
 			return w.Flush()
