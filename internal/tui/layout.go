@@ -124,7 +124,10 @@ func (m Model) renderRow(r Row) string {
 		if runner == "" {
 			runner = "—"
 		}
-		return fmt.Sprintf("      %2d  %-10s  %s", r.Slot.N, stateStyle.Render(label), runner)
+		// Pad the state label to a fixed width BEFORE styling — lipgloss adds
+		// ANSI escapes that throw off fmt's width calculation.
+		padded := fmt.Sprintf("%-10s", label)
+		return fmt.Sprintf("      %2d  %s  %s", r.Slot.N, stateStyle.Render(padded), runner)
 	}
 }
 
