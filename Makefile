@@ -7,6 +7,7 @@ all: build
 
 assets:
 	cp systemd/bobsled@.service assets/bobsled@.service
+	cp systemd/registry.service assets/registry.service
 
 build: assets
 	mkdir -p $(BIN)

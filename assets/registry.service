@@ -1,0 +1,24 @@
+# systemd/registry.service
+[Unit]
+Description=bobsled pull-through container registry (zot)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+EnvironmentFile=%h/registry-image-digest.env
+ExecStart=/usr/bin/podman run --rm --replace \
+    --name=bobsled-registry \
+    --userns=keep-id:uid=1000,gid=1000 \
+    -p 127.0.0.1:5000:5000 \
+    -v %h/.cache/bobsled/registry:/var/lib/registry \
+    -v %h/registry-config.json:/etc/zot/config.json:ro \
+    ghcr.io/project-zot/zot-linux-amd64@${BOBSLED_REGISTRY_DIGEST} \
+    serve /etc/zot/config.json
+Restart=always
+RestartSec=5s
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+[Install]
+WantedBy=default.target
