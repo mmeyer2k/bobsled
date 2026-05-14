@@ -191,9 +191,39 @@ type flash struct {
 	Until   time.Time
 }
 
-// Update and View are added in later tasks. For now Update is a no-op so the
-// type satisfies tea.Model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch v := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.Width, m.Height = v.Width, v.Height
+		return m, nil
+
+	case hostsTickMsg:
+		if v.M.Err != nil {
+			m.Errs["hosts/"+v.M.Host] = v.M.Err.Error()
+		} else {
+			delete(m.Errs, "hosts/"+v.M.Host)
+			m.Hosts[v.M.Host] = v.M.State
+		}
+		return m, waitForHostsMsg(v.Ch)
+
+	case runnersTickMsg:
+		if v.M.Err != nil {
+			m.Errs["runners/"+v.M.Repo] = v.M.Err.Error()
+		} else {
+			delete(m.Errs, "runners/"+v.M.Repo)
+			m.Runners[v.M.Repo] = v.M.State
+		}
+		return m, waitForRunnersMsg(v.Ch)
+
+	case runsTickMsg:
+		if v.M.Err != nil {
+			m.Errs["runs/"+v.M.Repo] = v.M.Err.Error()
+		} else {
+			delete(m.Errs, "runs/"+v.M.Repo)
+			m.Runs[v.M.Repo] = v.M.State
+		}
+		return m, waitForRunsMsg(v.Ch)
+	}
 	return m, nil
 }
 
