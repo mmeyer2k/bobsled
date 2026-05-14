@@ -27,6 +27,7 @@ func NewRoot() *cobra.Command {
 	root.AddCommand(newImageCmd())
 	root.AddCommand(newScaleCmd())
 	root.AddCommand(newTuiCmd())
+	root.AddCommand(newRepoCmd())
 	return root
 }
 
