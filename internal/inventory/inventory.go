@@ -29,10 +29,9 @@ type Upstream struct {
 	URL  string `yaml:"url"`
 }
 
-// DefaultRegistryDigest is the pinned zot image. Bump when upgrading zot.
-// TODO(task-13): the all-zeroes sentinel below must be replaced with the real
-// ghcr.io/project-zot/zot-linux-amd64 digest as part of the smoke-script task.
-const DefaultRegistryDigest = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+// DefaultRegistryDigest is the pinned zot image. Bump when upgrading zot
+// (`podman pull ghcr.io/project-zot/zot-linux-amd64:latest && podman inspect ...`).
+const DefaultRegistryDigest = "sha256:0fca8ef6e4e1d8e234ee61766800424bb25a34753e8711937cbec0b4aa8a1788"
 
 func defaultUpstreams() []Upstream {
 	return []Upstream{
