@@ -16,6 +16,8 @@ func newHostCmd() *cobra.Command {
 	host := &cobra.Command{Use: "host", Short: "Host lifecycle operations"}
 	host.AddCommand(newHostBootstrapCmd())
 	host.AddCommand(newHostInstallCmd())
+	host.AddCommand(newHostUpgradeCmd())
+	host.AddCommand(newHostRotateKeyCmd())
 	return host
 }
 
