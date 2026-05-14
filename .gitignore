@@ -9,4 +9,4 @@ vendor/
 *.local.yaml
 .env
 .envrc
-inventory.yaml
+inventory.yaml/.idea/

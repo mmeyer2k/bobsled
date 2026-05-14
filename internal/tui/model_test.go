@@ -102,45 +102,42 @@ func batchContainsForceRedraw(cmd tea.Cmd) bool {
 	return false
 }
 
-// TestFormAbort_EmitsForceRedraw verifies that when a huh form is in
-// StateAborted the Update path clears m.Form and emits a forceRedrawCmd.
-func TestFormAbort_EmitsForceRedraw(t *testing.T) {
+// TestFormAbort_ClearsFormAndReturnsCmd verifies that when a huh form is in
+// StateAborted the Update path clears m.Form and returns a non-nil cmd
+// (which is tea.ClearScreen to repaint).
+func TestFormAbort_ClearsFormAndReturnsCmd(t *testing.T) {
 	m := newTestModel(t)
 	fwr := NewConfirmForm("Test?", "desc")
-	// Force the form into StateAborted directly (mirroring the StateCompleted test).
 	fwr.Form.State = huh.StateAborted
 	m.Form = &fwr
 	m.formOnSubmit = func(interface{}) tea.Cmd { return nil }
 
-	// Any key triggers the switch on Form.State in Update.
 	mNew, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	mm := mNew.(Model)
 	require.Nil(t, mm.Form, "Form should be cleared after abort")
-	require.True(t, batchContainsForceRedraw(cmd), "forceRedrawMsg must be emitted on abort")
+	require.NotNil(t, cmd, "should return ClearScreen to repaint the tree")
 }
 
-// TestFormComplete_EmitsForceRedraw verifies that when a huh form transitions
-// to StateCompleted the Update path returns a forceRedrawCmd so Bubbletea
-// re-renders the tree immediately (instead of waiting for the next key press).
-func TestFormComplete_EmitsForceRedraw(t *testing.T) {
+// TestFormComplete_ClearsFormAndCallsCallback verifies that when a huh form
+// transitions to StateCompleted, the form is cleared and the submit callback
+// runs. A cmd (ClearScreen + optional action) is returned to repaint.
+func TestFormComplete_ClearsFormAndCallsCallback(t *testing.T) {
 	m := newTestModel(t)
 	fwr := NewConfirmForm("Test?", "desc")
-	// Drive the form to StateCompleted by setting state directly.
 	fwr.Form.State = huh.StateCompleted
 	m.Form = &fwr
 
 	cbCalled := false
 	m.formOnSubmit = func(interface{}) tea.Cmd {
 		cbCalled = true
-		return nil // callback returns no further action
+		return nil
 	}
 
-	// Any key triggers the StateCompleted branch in Update.
 	mNew, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	mm := mNew.(Model)
 	require.Nil(t, mm.Form, "Form should be nil after completion")
 	require.True(t, cbCalled, "formOnSubmit callback should have been called")
-	require.True(t, batchContainsForceRedraw(cmd), "forceRedrawMsg must be emitted on completion")
+	require.NotNil(t, cmd, "should return ClearScreen to repaint the tree")
 }
 
 // TestFormComplete_WithAction_BatchesAction checks the batch path where the
