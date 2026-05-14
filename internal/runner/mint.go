@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/m-meyer2k/bobsled/internal/cache"
@@ -60,6 +61,25 @@ func Mint(ctx context.Context, opts Options) error {
 	jit, err := c.GenerateJITConfig(ctx, inst.Repo, ghapp.JITRequest{
 		Name: name, Labels: append([]string(nil), repoCfg.Labels...),
 	})
+	if err != nil && is409Conflict(err) {
+		// Orphan registration from a previous run. Find it, delete it, retry.
+		runners, listErr := c.ListRepoRunners(ctx, inst.Repo)
+		if listErr != nil {
+			return fmt.Errorf("jit: 409 conflict, list runners to recover: %w (original: %v)", listErr, err)
+		}
+		for _, r := range runners {
+			if r.Name == name {
+				if delErr := c.DeleteRepoRunner(ctx, inst.Repo, r.ID); delErr != nil {
+					return fmt.Errorf("jit: 409 conflict, delete orphan %d: %w (original: %v)", r.ID, delErr, err)
+				}
+				break
+			}
+		}
+		// Retry once.
+		jit, err = c.GenerateJITConfig(ctx, inst.Repo, ghapp.JITRequest{
+			Name: name, Labels: append([]string(nil), repoCfg.Labels...),
+		})
+	}
 	if err != nil {
 		return fmt.Errorf("jit: %w", err)
 	}
@@ -77,4 +97,12 @@ func Mint(ctx context.Context, opts Options) error {
 		return err
 	}
 	return nil
+}
+
+func is409Conflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return strings.Contains(s, "409") || strings.Contains(s, "Already exists")
 }

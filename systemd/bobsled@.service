@@ -21,10 +21,10 @@ ExecStart=/usr/bin/podman run --rm \
     -v %h/.cache/bobsled/slots/%i/current:/cache \
     bobsled:${BOBSLED_IMAGE_DIGEST}
 ExecStopPost=/bin/rm -rf %t/bobsled/%i
-Restart=always
-RestartSec=2s
-StartLimitBurst=10
-StartLimitIntervalSec=120
+Restart=on-failure
+RestartSec=5s
+StartLimitBurst=5
+StartLimitIntervalSec=60
 
 [Install]
 WantedBy=default.target
