@@ -1,0 +1,65 @@
+{
+  "distSpecVersion": "1.1.0",
+  "extensions": {
+    "sync": {
+      "enable": true,
+      "registries": [
+        {
+          "content": [
+            {
+              "destination": "/docker.io",
+              "prefix": "**",
+              "stripPrefix": false
+            }
+          ],
+          "onDemand": true,
+          "tlsVerify": true,
+          "urls": [
+            "https://registry-1.docker.io"
+          ]
+        },
+        {
+          "content": [
+            {
+              "destination": "/ghcr.io",
+              "prefix": "**",
+              "stripPrefix": false
+            }
+          ],
+          "onDemand": true,
+          "tlsVerify": true,
+          "urls": [
+            "https://ghcr.io"
+          ]
+        },
+        {
+          "content": [
+            {
+              "destination": "/quay.io",
+              "prefix": "**",
+              "stripPrefix": false
+            }
+          ],
+          "onDemand": true,
+          "tlsVerify": true,
+          "urls": [
+            "https://quay.io"
+          ]
+        }
+      ]
+    }
+  },
+  "http": {
+    "address": "0.0.0.0",
+    "port": "5000"
+  },
+  "log": {
+    "level": "info"
+  },
+  "storage": {
+    "gc": true,
+    "gcDelay": "336h",
+    "gcInterval": "1h",
+    "rootDirectory": "/var/lib/registry"
+  }
+}
