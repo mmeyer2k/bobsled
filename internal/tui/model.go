@@ -193,6 +193,8 @@ type flash struct {
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch v := msg.(type) {
+	case tea.KeyMsg:
+		return m.handleKey(v)
 	case tea.WindowSizeMsg:
 		m.Width, m.Height = v.Width, v.Height
 		return m, nil
