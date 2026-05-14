@@ -47,6 +47,29 @@ func DrainHostCmd(inventoryPath, host string) tea.Cmd {
 	return runAction(desc, inventoryPath, "drain", "--host", host)
 }
 
+// HostRemoveCmd runs `bobsled host remove <host>` (no --wipe by default).
+func HostRemoveCmd(inventoryPath, host string) tea.Cmd {
+	desc := fmt.Sprintf("remove host %s", host)
+	return runAction(desc, inventoryPath, "host", "remove", host)
+}
+
+// CacheResetSlotCmd resets a single slot's cache.
+func CacheResetSlotCmd(inventoryPath, host string, slot int) tea.Cmd {
+	desc := fmt.Sprintf("cache reset %s slot %d", host, slot)
+	return runAction(desc, inventoryPath, "cache", "reset", "--host", host, "--slot", fmt.Sprint(slot))
+}
+
+// CacheResetHostCmd resets every slot's cache on the host.
+func CacheResetHostCmd(inventoryPath, host string) tea.Cmd {
+	desc := fmt.Sprintf("cache reset host %s", host)
+	return runAction(desc, inventoryPath, "cache", "reset", "--host", host)
+}
+
+// GCCmd runs `bobsled gc` to delete orphan GitHub-side runners.
+func GCCmd(inventoryPath string) tea.Cmd {
+	return runAction("gc orphan runners", inventoryPath, "gc")
+}
+
 func runAction(description, inventory string, args ...string) tea.Cmd {
 	return func() tea.Msg {
 		exe, err := os.Executable()

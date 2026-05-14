@@ -78,3 +78,54 @@ func updateOnce(m Model, msg tea.Msg) (Model, tea.Cmd) {
 	r, c := m.Update(msg)
 	return r.(Model), c
 }
+
+func TestKey_R_FlashesRefreshMessage(t *testing.T) {
+	m := modelWithTwoHosts(t)
+	m.Cursor = Cursor{Host: "h1", Kind: CursorHost}
+	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'R'}})
+	mm := mNew.(Model)
+	require.NotNil(t, mm.Flash)
+	require.Contains(t, mm.Flash.Text, "refresh")
+}
+
+func TestKey_Question_OpensHelpModal(t *testing.T) {
+	m := modelWithTwoHosts(t)
+	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
+	mm := mNew.(Model)
+	require.NotNil(t, mm.Modal)
+	require.Contains(t, mm.Modal.Title, "Keybindings")
+}
+
+func TestKey_CapitalD_OnSlotFlashes(t *testing.T) {
+	m := modelWithTwoHosts(t)
+	m.Cursor = Cursor{Host: "h1", Kind: CursorSlot, Slot: 1}
+	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'D'}})
+	mm := mNew.(Model)
+	require.NotNil(t, mm.Flash)
+	require.Contains(t, mm.Flash.Text, "host")
+}
+
+func TestKey_CapitalD_OnHostOpensRemoveModal(t *testing.T) {
+	m := modelWithTwoHosts(t)
+	m.Cursor = Cursor{Host: "h1", Kind: CursorHost}
+	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'D'}})
+	mm := mNew.(Model)
+	require.NotNil(t, mm.Modal)
+	require.Contains(t, mm.Modal.Title, "Remove host")
+}
+
+func TestKey_G_OpensGCModal(t *testing.T) {
+	m := modelWithTwoHosts(t)
+	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	mm := mNew.(Model)
+	require.NotNil(t, mm.Modal)
+	require.Contains(t, mm.Modal.Title, "GC")
+}
+
+func TestKey_A_FlashesCLIHint(t *testing.T) {
+	m := modelWithTwoHosts(t)
+	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	mm := mNew.(Model)
+	require.NotNil(t, mm.Flash)
+	require.Contains(t, mm.Flash.Text, "scale")
+}
