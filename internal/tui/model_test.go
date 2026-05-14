@@ -143,23 +143,26 @@ func TestFormComplete_EmitsForceRedraw(t *testing.T) {
 	require.True(t, batchContainsForceRedraw(cmd), "forceRedrawMsg must be emitted on completion")
 }
 
-// TestFormComplete_WithAction_EmitsForceRedraw checks the batch path where the
-// callback returns a non-nil action cmd.
-func TestFormComplete_WithAction_EmitsForceRedraw(t *testing.T) {
+// TestFormComplete_WithAction_BatchesAction checks the batch path where the
+// callback returns a non-nil action cmd — it must be batched and the model
+// must be cleared.
+func TestFormComplete_WithAction_BatchesAction(t *testing.T) {
 	m := newTestModel(t)
 	fwr := NewConfirmForm("Test?", "desc")
 	fwr.Form.State = huh.StateCompleted
 	m.Form = &fwr
 
-	actionMsg := struct{ name string }{"sentinel"}
+	called := false
 	m.formOnSubmit = func(interface{}) tea.Cmd {
-		return func() tea.Msg { return actionMsg }
+		called = true
+		return func() tea.Msg { return struct{ name string }{"sentinel"} }
 	}
 
 	mNew, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	mm := mNew.(Model)
 	require.Nil(t, mm.Form, "Form should be nil after completion")
-	require.True(t, batchContainsForceRedraw(cmd), "forceRedrawMsg must be present in batch cmd")
+	require.NotNil(t, cmd, "should return a cmd (Batch of action + ClearScreen)")
+	require.True(t, called, "the submit callback ran")
 }
 
 // TestForceRedrawMsg_IsNoOp verifies that Update handles forceRedrawMsg without

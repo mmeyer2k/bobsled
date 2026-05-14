@@ -211,39 +211,16 @@ type flash struct {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Application-specific messages (pollers, action results, window resize)
+	// always run through our handlers, even when a huh form is open —
+	// otherwise polls would stop while a modal was up. We do this BEFORE
+	// the form-routing block.
 	switch v := msg.(type) {
-	case tea.KeyMsg:
-		if m.Form != nil {
-			newForm, cmd := m.Form.Form.Update(v)
-			m.Form.Form = newForm.(*huh.Form)
-			switch m.Form.Form.State {
-			case huh.StateCompleted:
-				result := m.Form.Result()
-				cb := m.formOnSubmit
-				m.Form = nil
-				m.formOnSubmit = nil
-				if cb != nil {
-					if action := cb(result); action != nil {
-						return m, tea.Batch(action, forceRedrawCmd())
-					}
-				}
-				return m, forceRedrawCmd()
-			case huh.StateAborted:
-				m.Form = nil
-				m.formOnSubmit = nil
-				return m, forceRedrawCmd()
-			default:
-				return m, cmd
-			}
-		}
-		return m.handleKey(v)
 	case forceRedrawMsg:
 		return m, nil
-
 	case tea.WindowSizeMsg:
 		m.Width, m.Height = v.Width, v.Height
-		return m, nil
-
+		// don't return — let the form see resize too if it's open
 	case hostsTickMsg:
 		if v.M.Err != nil {
 			m.Errs["hosts/"+v.M.Host] = v.M.Err.Error()
@@ -251,12 +228,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			delete(m.Errs, "hosts/"+v.M.Host)
 			m.Hosts[v.M.Host] = v.M.State
 		}
-		// First valid tick: park the cursor on the first host.
 		if m.Cursor.Host == "" && len(m.Hosts) > 0 {
 			m.Cursor = FirstCursor(m.Hosts, m.Expanded)
 		}
 		return m, waitForHostsMsg(v.Ch)
-
 	case runnersTickMsg:
 		if v.M.Err != nil {
 			m.Errs["runners/"+v.M.Repo] = v.M.Err.Error()
@@ -265,7 +240,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Runners[v.M.Repo] = v.M.State
 		}
 		return m, waitForRunnersMsg(v.Ch)
-
 	case runsTickMsg:
 		if v.M.Err != nil {
 			m.Errs["runs/"+v.M.Repo] = v.M.Err.Error()
@@ -274,7 +248,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Runs[v.M.Repo] = v.M.State
 		}
 		return m, waitForRunsMsg(v.Ch)
-
 	case ActionLogMsg:
 		return m.onActionLog(v)
 	case ActionResultMsg:
@@ -302,14 +275,43 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return AddPoolsCmd(invPath, host, picked, hostStates)
 		})
-	default:
-		if m.Form != nil {
-			newForm, cmd := m.Form.Form.Update(msg)
-			m.Form.Form = newForm.(*huh.Form)
+	}
+
+	// If a form is active, route remaining msgs (KeyMsg, huh-internal,
+	// resize) to it. huh emits its own internal messages between Enter and
+	// the State transition — only forwarding KeyMsg leaves it stuck.
+	if m.Form != nil {
+		newForm, cmd := m.Form.Form.Update(msg)
+		if f, ok := newForm.(*huh.Form); ok {
+			m.Form.Form = f
+		}
+		switch m.Form.Form.State {
+		case huh.StateCompleted:
+			result := m.Form.Result()
+			cb := m.formOnSubmit
+			m.Form = nil
+			m.formOnSubmit = nil
+			var actionCmd tea.Cmd
+			if cb != nil {
+				actionCmd = cb(result)
+			}
+			if actionCmd != nil {
+				return m, tea.Batch(actionCmd, tea.ClearScreen)
+			}
+			return m, tea.ClearScreen
+		case huh.StateAborted:
+			m.Form = nil
+			m.formOnSubmit = nil
+			return m, tea.ClearScreen
+		default:
 			return m, cmd
 		}
-		return m, nil
 	}
+
+	if km, ok := msg.(tea.KeyMsg); ok {
+		return m.handleKey(km)
+	}
+	return m, nil
 }
 
 func (m Model) View() string {
