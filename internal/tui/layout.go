@@ -78,7 +78,8 @@ func (m Model) renderTree() string {
 }
 
 func (m Model) renderRow(r Row) string {
-	if r.Kind == RowHost {
+	switch r.Kind {
+	case RowHost:
 		marker := "▼"
 		if !m.Expanded[r.Host] {
 			marker = "▶"
@@ -87,33 +88,46 @@ func (m Model) renderRow(r Row) string {
 		if r.HostState != nil && !r.HostState.Reachable {
 			reach = hostUnreach.Render("●UNREACHABLE")
 		}
-		used := 0
-		cap := 0
+		used, cap := 0, 0
 		if r.HostState != nil {
 			used = len(r.HostState.Slots)
 			cap = r.HostState.Capacity
 		}
 		return hostHeader.Render(fmt.Sprintf("%s %-12s cap=%d used=%d   %s", marker, r.Host, cap, used, reach))
+
+	case RowRepo:
+		key := repoExpandKey(r.Host, r.Repo)
+		marker := "▼"
+		if val, ok := m.Expanded[key]; ok && !val {
+			marker = "▶"
+		}
+		return "  " + hostHeader.Render(fmt.Sprintf("%s %s (%d)", marker, r.Repo, r.SlotCount))
+
+	default: // RowSlot
+		stateStyle := slotActive
+		switch r.Slot.UnitState {
+		case "activating":
+			stateStyle = slotActivating
+		case "failed":
+			stateStyle = slotFailed
+		}
+		runner := r.RunnerName
+		if runner == "" {
+			runner = "—"
+		}
+		return fmt.Sprintf("      %d  %s  %s", r.Slot.N, stateStyle.Render(r.Slot.UnitState), runner)
 	}
-	stateStyle := slotActive
-	switch r.Slot.UnitState {
-	case "activating":
-		stateStyle = slotActivating
-	case "failed":
-		stateStyle = slotFailed
-	}
-	runner := r.RunnerName
-	if runner == "" {
-		runner = "—"
-	}
-	return fmt.Sprintf("    %d  %s  %-18s  %s", r.Slot.N, stateStyle.Render(r.Slot.UnitState), r.Slot.Repo, runner)
 }
 
 func (m Model) isCursorOn(r Row) bool {
-	if r.Kind == RowHost {
-		return m.Cursor.Host == r.Host && m.Cursor.Kind == CursorHost
+	switch r.Kind {
+	case RowHost:
+		return m.Cursor.Kind == CursorHost && m.Cursor.Host == r.Host
+	case RowRepo:
+		return m.Cursor.Kind == CursorRepo && m.Cursor.Host == r.Host && m.Cursor.Repo == r.Repo
+	default: // RowSlot
+		return m.Cursor.Kind == CursorSlot && m.Cursor.Host == r.Host && m.Cursor.Repo == r.Repo && m.Cursor.Slot == r.Slot.N
 	}
-	return m.Cursor.Host == r.Host && m.Cursor.Kind == CursorSlot && m.Cursor.Slot == r.Slot.N
 }
 
 func (m Model) renderWorkload() string {

@@ -155,6 +155,45 @@ func AddPoolsCmd(inventoryPath, host string, repos []string, hostStates map[stri
 	}
 }
 
+// DrainRepoCmd drains every slot on `host` that serves `repo` by issuing one
+// drain --host h --slot N per matching slot.
+func DrainRepoCmd(inventoryPath, host, repo string, hostStates map[string]*poller.HostState) tea.Cmd {
+	return func() tea.Msg {
+		hs := hostStates[host]
+		if hs == nil {
+			return ActionResultMsg{Description: "drain pool " + repo, Err: fmt.Errorf("no host state for %s", host)}
+		}
+		for n, s := range hs.Slots {
+			if s.Repo != repo {
+				continue
+			}
+			if err := runActionSync(inventoryPath, "drain", "--host", host, "--slot", fmt.Sprint(n)); err != nil {
+				return ActionResultMsg{Description: fmt.Sprintf("drain %s slot %d", host, n), Err: err}
+			}
+		}
+		return ActionResultMsg{Description: fmt.Sprintf("drained pool %s on %s", repo, host)}
+	}
+}
+
+// CacheResetRepoCmd resets the cache for every slot on `host` that serves `repo`.
+func CacheResetRepoCmd(inventoryPath, host, repo string, hostStates map[string]*poller.HostState) tea.Cmd {
+	return func() tea.Msg {
+		hs := hostStates[host]
+		if hs == nil {
+			return ActionResultMsg{Description: "reset cache " + repo, Err: fmt.Errorf("no host state for %s", host)}
+		}
+		for n, s := range hs.Slots {
+			if s.Repo != repo {
+				continue
+			}
+			if err := runActionSync(inventoryPath, "cache", "reset", "--host", host, "--slot", fmt.Sprint(n)); err != nil {
+				return ActionResultMsg{Description: fmt.Sprintf("reset %s slot %d", host, n), Err: err}
+			}
+		}
+		return ActionResultMsg{Description: fmt.Sprintf("reset caches for %s on %s", repo, host)}
+	}
+}
+
 // runActionSync invokes ./bin/bobsled <args> synchronously, returning any error.
 func runActionSync(inventory string, args ...string) error {
 	exe, err := os.Executable()

@@ -2,6 +2,7 @@
 package tui
 
 import (
+	"fmt"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -14,8 +15,17 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	case tea.KeyCtrlC:
 		return m, tea.Quit
 	case tea.KeyEnter:
-		if m.Cursor.Kind == CursorHost {
+		switch m.Cursor.Kind {
+		case CursorHost:
 			m.Expanded[m.Cursor.Host] = !m.Expanded[m.Cursor.Host]
+		case CursorRepo:
+			key := repoExpandKey(m.Cursor.Host, m.Cursor.Repo)
+			// Default is expanded, so missing key + toggle → collapsed.
+			if val, ok := m.Expanded[key]; ok {
+				m.Expanded[key] = !val
+			} else {
+				m.Expanded[key] = false
+			}
 		}
 		return m, nil
 	case tea.KeyUp:
@@ -36,21 +46,29 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	case 'k':
 		m.Cursor = PrevCursor(m.Cursor, m.Hosts, m.Expanded)
 	case 'd':
+		if m.Cursor.Host == "" {
+			return m, nil
+		}
+		host := m.Cursor.Host
 		var onConfirm func() tea.Cmd
-		title := "Drain slot"
-		body := "Disable this slot. Existing jobs run to completion."
-		if m.Cursor.Kind == CursorHost {
-			title = "Drain host " + m.Cursor.Host
+		title := "Drain"
+		body := "Disable matching units. In-flight jobs finish."
+		switch m.Cursor.Kind {
+		case CursorHost:
+			title = "Drain host " + host
 			body = "Disable every slot on this host."
-			host := m.Cursor.Host
+			onConfirm = func() tea.Cmd { return DrainHostCmd(m.InventoryPath, host) }
+		case CursorRepo:
+			repo := m.Cursor.Repo
+			title = fmt.Sprintf("Drain pool %s on %s", repo, host)
+			body = "Disable every slot serving this repo on this host."
 			onConfirm = func() tea.Cmd {
-				return DrainHostCmd(m.InventoryPath, host)
+				return DrainRepoCmd(m.InventoryPath, host, repo, m.Hosts)
 			}
-		} else {
-			host, slot := m.Cursor.Host, m.Cursor.Slot
-			onConfirm = func() tea.Cmd {
-				return DrainSlotCmd(m.InventoryPath, host, slot)
-			}
+		case CursorSlot:
+			slot := m.Cursor.Slot
+			title = fmt.Sprintf("Drain slot %d on %s", slot, host)
+			onConfirm = func() tea.Cmd { return DrainSlotCmd(m.InventoryPath, host, slot) }
 		}
 		mod := NewConfirmModal(title, body, onConfirm)
 		m.Modal = &mod
@@ -69,16 +87,27 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m, nil
 
 	case 'r':
+		if m.Cursor.Host == "" {
+			return m, nil
+		}
+		host := m.Cursor.Host
 		var onConfirm func() tea.Cmd
 		title := "Reset cache"
-		body := "Wipe this (slot, repo) cache. Next run starts cold."
-		if m.Cursor.Kind == CursorHost {
-			title = "Reset all caches on " + m.Cursor.Host
+		body := "Wipe cache. Next runs start cold."
+		switch m.Cursor.Kind {
+		case CursorHost:
+			title = "Reset all caches on " + host
 			body = "Wipe every slot's cache on this host."
-			host := m.Cursor.Host
 			onConfirm = func() tea.Cmd { return CacheResetHostCmd(m.InventoryPath, host) }
-		} else {
-			host, slot := m.Cursor.Host, m.Cursor.Slot
+		case CursorRepo:
+			repo := m.Cursor.Repo
+			title = fmt.Sprintf("Reset caches for %s on %s", repo, host)
+			body = "Wipe the cache for every slot serving this repo on this host."
+			onConfirm = func() tea.Cmd {
+				return CacheResetRepoCmd(m.InventoryPath, host, repo, m.Hosts)
+			}
+		case CursorSlot:
+			slot := m.Cursor.Slot
 			onConfirm = func() tea.Cmd { return CacheResetSlotCmd(m.InventoryPath, host, slot) }
 		}
 		mod := NewConfirmModal(title, body, onConfirm)
@@ -132,21 +161,16 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m, nil
 
 	case 'P':
-		// Figure out which repo to remove. If the cursor is on a slot, that
-		// slot's repo is the obvious target. On a host row, we don't have a
-		// single repo — flash a hint.
-		if m.Cursor.Kind != CursorSlot {
-			m.Flash = &flash{Text: "Put the cursor on a slot row — `P` removes that repo's pool.", Until: time.Now().Add(3 * time.Second)}
-			return m, nil
+		// Determine the target repo from the cursor.
+		repo := ""
+		switch m.Cursor.Kind {
+		case CursorRepo:
+			repo = m.Cursor.Repo
+		case CursorSlot:
+			repo = m.Cursor.Repo
 		}
-		host := m.Cursor.Host
-		hostState := m.Hosts[host]
-		if hostState == nil {
-			return m, nil
-		}
-		repo := hostState.Slots[m.Cursor.Slot].Repo
 		if repo == "" {
-			m.Flash = &flash{Text: "This slot has no repo assigned yet — try again after the next poll.", Until: time.Now().Add(3 * time.Second)}
+			m.Flash = &flash{Text: "Put the cursor on a repo or slot row — `P` removes that repo's pool.", Until: time.Now().Add(3 * time.Second)}
 			return m, nil
 		}
 		capturedRepo := repo
@@ -161,11 +185,35 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			m.Flash = &flash{Text: "No host under cursor — wait for the first poll.", Until: time.Now().Add(3 * time.Second)}
 			return m, nil
 		}
+		host := m.Cursor.Host
+		// On a repo or slot row, scale that exact (host, repo) up by 1.
+		repo := ""
+		switch m.Cursor.Kind {
+		case CursorRepo:
+			repo = m.Cursor.Repo
+		case CursorSlot:
+			repo = m.Cursor.Repo
+		}
+		if repo != "" {
+			hostState := m.Hosts[host]
+			current := 0
+			if hostState != nil {
+				for _, s := range hostState.Slots {
+					if s.Repo == repo {
+						current++
+					}
+				}
+			}
+			cmd := ScaleCmd(m.InventoryPath, host, repo, current+1)
+			m.Flash = &flash{Text: fmt.Sprintf("scaling %s on %s to %d…", repo, host, current+1), Until: time.Now().Add(2 * time.Second)}
+			return m, cmd
+		}
+		// On a host row: open the multi-select picker.
 		if m.Client == nil {
 			m.Flash = &flash{Text: "No GitHub client available; can't list repos.", IsError: true, Until: time.Now().Add(3 * time.Second)}
 			return m, nil
 		}
-		m.pickerHost = m.Cursor.Host
+		m.pickerHost = host
 		m.Flash = &flash{Text: "loading repos…", Until: time.Now().Add(3 * time.Second)}
 		return m, LoadAccessibleReposCmd(m.Client)
 

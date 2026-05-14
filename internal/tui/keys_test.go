@@ -149,7 +149,7 @@ func TestKey_A_OnSlotNoClientFlashes(t *testing.T) {
 func TestKey_P_OnSlotOpensRemovePoolModal(t *testing.T) {
 	m := modelWithTwoHosts(t)
 	m.Hosts["h1"].Slots[1] = poller.SlotState{N: 1, Repo: "acme/foo"}
-	m.Cursor = Cursor{Host: "h1", Kind: CursorSlot, Slot: 1}
+	m.Cursor = Cursor{Host: "h1", Kind: CursorSlot, Slot: 1, Repo: "acme/foo"}
 	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'P'}})
 	mm := mNew.(Model)
 	require.NotNil(t, mm.Modal)
@@ -163,6 +163,23 @@ func TestKey_P_OnHostFlashes(t *testing.T) {
 	mm := mNew.(Model)
 	require.NotNil(t, mm.Flash)
 	require.Contains(t, mm.Flash.Text, "slot row")
+}
+
+func TestKey_Enter_TogglesRepoExpand(t *testing.T) {
+	m := modelWithTwoHosts(t)
+	// Ensure slots have repos so repo groups exist.
+	m.Hosts["h1"].Slots[1] = poller.SlotState{N: 1, Repo: "acme/foo"}
+	m.Hosts["h1"].Slots[2] = poller.SlotState{N: 2, Repo: "acme/foo"}
+	m.Cursor = Cursor{Host: "h1", Repo: "acme/foo", Kind: CursorRepo}
+
+	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	mm := mNew.(Model)
+	key := repoExpandKey("h1", "acme/foo")
+	require.Equal(t, false, mm.Expanded[key], "first Enter collapses the repo group (default was expanded)")
+
+	mNew, _ = mm.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	mm = mNew.(Model)
+	require.Equal(t, true, mm.Expanded[key], "second Enter re-expands")
 }
 
 func TestKey_LowercaseP_OpensAddPoolPrompt(t *testing.T) {
