@@ -140,4 +140,70 @@ registry:
 	}
 }
 
+func TestInventoryRegistryValidationErrors(t *testing.T) {
+	cases := []struct {
+		name    string
+		yaml    string
+		wantSub string
+	}{
+		{
+			name: "upstream missing name",
+			yaml: `
+github:
+  app_id: 1
+  app_key: /tmp/key.pem
+hosts:
+  h1: {ssh: bobsled@h1, capacity: 1}
+registry:
+  upstreams:
+    - name: ""
+      url: https://example.com
+`,
+			wantSub: "registry.upstreams[0] missing name",
+		},
+		{
+			name: "upstream missing url",
+			yaml: `
+github:
+  app_id: 1
+  app_key: /tmp/key.pem
+hosts:
+  h1: {ssh: bobsled@h1, capacity: 1}
+registry:
+  upstreams:
+    - name: docker.io
+      url: ""
+`,
+			wantSub: "registry.upstreams[0] (docker.io) missing url",
+		},
+		{
+			name: "image_digest missing sha256 prefix",
+			yaml: `
+github:
+  app_id: 1
+  app_key: /tmp/key.pem
+hosts:
+  h1: {ssh: bobsled@h1, capacity: 1}
+registry:
+  image_digest: deadbeef
+`,
+			wantSub: `registry.image_digest "deadbeef" must start with sha256:`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "inv.yaml")
+			must(t, os.WriteFile(path, []byte(tc.yaml), 0o644))
+			_, err := Load(path)
+			if err == nil {
+				t.Fatalf("Load: want error containing %q, got nil", tc.wantSub)
+			}
+			if !strings.Contains(err.Error(), tc.wantSub) {
+				t.Errorf("Load: error %q does not contain %q", err.Error(), tc.wantSub)
+			}
+		})
+	}
+}
+
 func must(t *testing.T, err error) { t.Helper(); if err != nil { t.Fatal(err) } }

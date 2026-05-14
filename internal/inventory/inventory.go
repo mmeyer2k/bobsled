@@ -30,6 +30,8 @@ type Upstream struct {
 }
 
 // DefaultRegistryDigest is the pinned zot image. Bump when upgrading zot.
+// TODO(task-13): the all-zeroes sentinel below must be replaced with the real
+// ghcr.io/project-zot/zot-linux-amd64 digest as part of the smoke-script task.
 const DefaultRegistryDigest = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
 
 func defaultUpstreams() []Upstream {
@@ -143,7 +145,7 @@ func (inv *Inventory) validate() error {
 			}
 		}
 		if d := inv.Registry.ImageDigest; d != "" && !strings.HasPrefix(d, "sha256:") {
-			return fmt.Errorf("inventory: registry.image_digest must start with sha256:")
+			return fmt.Errorf("inventory: registry.image_digest %q must start with sha256:", d)
 		}
 	}
 	return nil
