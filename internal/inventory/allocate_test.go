@@ -77,4 +77,60 @@ func TestAllocate_Deterministic(t *testing.T) {
 	}
 }
 
+// AllocateWithCurrent preserves existing slot indices on a host when the
+// host already has exactly the desired count of slots for a pool's repo.
+// This is what enables `bobsled slot remove` to delete a non-tail slot
+// without subsequent `apply` runs recreating it via dense renumbering.
+func TestAllocateWithCurrent_PreservesSparseIndicesWhenCountMatches(t *testing.T) {
+	inv := &Inventory{
+		Hosts: map[string]Host{"h1": {SSH: "x", Capacity: 5}},
+		Pools: []Pool{{Repo: "a/b", Count: 4, Spread: []string{"h1"}, Labels: []string{"bobsled"}}},
+	}
+	current := map[string]*state.State{
+		"h1": {
+			Repos:     map[string]state.RepoConfig{"a/b": {Labels: []string{"bobsled"}}},
+			Instances: map[int]state.Instance{1: {Repo: "a/b"}, 2: {Repo: "a/b"}, 4: {Repo: "a/b"}, 5: {Repo: "a/b"}},
+		},
+	}
+	got := AllocateWithCurrent(inv, current)
+	require.Len(t, got["h1"].Instances, 4, "preserves count")
+	for _, slot := range []int{1, 2, 4, 5} {
+		_, ok := got["h1"].Instances[slot]
+		require.Truef(t, ok, "slot %d preserved", slot)
+	}
+	_, has3 := got["h1"].Instances[3]
+	require.False(t, has3, "slot 3 not added by dense renumbering")
+}
+
+func TestAllocateWithCurrent_RenumbersDenselyWhenCountDiffers(t *testing.T) {
+	// If current has 3 slots for the repo on h1 but the pool wants 5,
+	// don't try to be clever — fall back to dense allocation.
+	inv := &Inventory{
+		Hosts: map[string]Host{"h1": {SSH: "x", Capacity: 5}},
+		Pools: []Pool{{Repo: "a/b", Count: 5, Spread: []string{"h1"}, Labels: []string{"bobsled"}}},
+	}
+	current := map[string]*state.State{
+		"h1": {
+			Repos:     map[string]state.RepoConfig{"a/b": {Labels: []string{"bobsled"}}},
+			Instances: map[int]state.Instance{1: {Repo: "a/b"}, 2: {Repo: "a/b"}, 4: {Repo: "a/b"}},
+		},
+	}
+	got := AllocateWithCurrent(inv, current)
+	require.Len(t, got["h1"].Instances, 5)
+	for i := 1; i <= 5; i++ {
+		_, ok := got["h1"].Instances[i]
+		require.Truef(t, ok, "dense slot %d allocated", i)
+	}
+}
+
+func TestAllocateWithCurrent_NilCurrentMatchesPlainAllocate(t *testing.T) {
+	inv := &Inventory{
+		Hosts: map[string]Host{"h1": {SSH: "x", Capacity: 5}},
+		Pools: []Pool{{Repo: "a/b", Count: 3, Spread: []string{"h1"}, Labels: []string{"bobsled"}}},
+	}
+	withNil := AllocateWithCurrent(inv, nil)
+	plain := Allocate(inv)
+	require.Equal(t, plain["h1"].Instances, withNil["h1"].Instances)
+}
+
 var _ = state.Instance{}

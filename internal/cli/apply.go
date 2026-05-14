@@ -23,7 +23,12 @@ func newApplyCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			desired := inventory.Allocate(inv)
+			// Pre-pass: read each host's current state so AllocateWithCurrent
+			// can preserve existing sparse slot indices (e.g. after
+			// `bobsled slot remove`). Failures here are non-fatal — the host
+			// just falls back to dense renumbering when we hit it.
+			current := readAllHostStates(inv)
+			desired := inventory.AllocateWithCurrent(inv, current)
 
 			var wg sync.WaitGroup
 			var mu sync.Mutex
@@ -106,4 +111,40 @@ func applyHost(name string, host inventory.Host, want *state.State) error {
 	}
 	fmt.Printf("[%s] +%d -%d ~%d\n", name, len(d.Added), len(d.Removed), len(d.Changed))
 	return nil
+}
+
+// readAllHostStates fans out one read-state-yaml SSH per host. Hosts that
+// fail (unreachable, parse error) are simply omitted from the map — they'll
+// fall back to dense allocation in AllocateWithCurrent.
+func readAllHostStates(inv *inventory.Inventory) map[string]*state.State {
+	out := map[string]*state.State{}
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for name, host := range inv.Hosts {
+		name, host := name, host
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s := &ssh.Client{Target: host.SSH}
+			if _, err := s.Run("touch state.yaml"); err != nil {
+				return
+			}
+			out2, err := s.Run("flock -x state.yaml -c 'cat state.yaml 2>/dev/null || true'")
+			if err != nil || strings.TrimSpace(out2) == "" {
+				return
+			}
+			var st state.State
+			if err := yaml.Unmarshal([]byte(out2), &st); err != nil {
+				return
+			}
+			if st.Instances == nil {
+				st.Instances = map[int]state.Instance{}
+			}
+			mu.Lock()
+			out[name] = &st
+			mu.Unlock()
+		}()
+	}
+	wg.Wait()
+	return out
 }
