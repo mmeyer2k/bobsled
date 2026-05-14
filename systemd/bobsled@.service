@@ -9,7 +9,7 @@ Type=exec
 EnvironmentFile=%h/image-digest.env
 RuntimeDirectory=bobsled/%i
 RuntimeDirectoryMode=0700
-ExecStartPre=%h/bin/bobsled-mint \
+ExecStartPre=%h/.local/bin/bobsled-mint \
     --instance %i \
     --output %t/bobsled/%i/jit.json
 ExecStart=/usr/bin/podman run --rm \

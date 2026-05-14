@@ -30,10 +30,10 @@ func newHostUpgradeCmd() *cobra.Command {
 			}
 			s := &ssh.Client{Target: host.SSH}
 			if mintBinary != "" {
-				if err := s.PutFile(mintBinary, "bin/bobsled-mint"); err != nil {
+				if err := s.PutFile(mintBinary, ".local/bin/bobsled-mint"); err != nil {
 					return err
 				}
-				if _, err := s.Run("chmod 0755 bin/bobsled-mint"); err != nil {
+				if _, err := s.Run("chmod 0755 .local/bin/bobsled-mint"); err != nil {
 					return err
 				}
 			}

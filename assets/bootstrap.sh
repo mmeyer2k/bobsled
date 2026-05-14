@@ -26,12 +26,19 @@ grep -q "^${USER_NAME}:" /etc/subgid || echo "${USER_NAME}:200000:65536" | sudo 
 
 sudo loginctl enable-linger "$USER_NAME"
 
-sudo install -d -o "$USER_NAME" -g "$USER_NAME" -m 0700 "$HOME_DIR/.ssh"
-sudo install -d -o "$USER_NAME" -g "$USER_NAME" -m 0700 "$HOME_DIR/bin"
-sudo install -d -o "$USER_NAME" -g "$USER_NAME" -m 0700 "$HOME_DIR/.cache/bobsled"
-sudo install -d -o "$USER_NAME" -g "$USER_NAME" -m 0700 "$HOME_DIR/.config/systemd/user"
-sudo touch "$HOME_DIR/.ssh/authorized_keys"
-sudo chown "$USER_NAME:$USER_NAME" "$HOME_DIR/.ssh/authorized_keys"
-sudo chmod 0600 "$HOME_DIR/.ssh/authorized_keys"
+# Create all bobsled-owned dirs as the bobsled user itself so intermediate
+# parents (~/.cache, ~/.config) are bobsled-owned, not root-owned.
+sudo -u "$USER_NAME" mkdir -p \
+    "$HOME_DIR/.ssh" \
+    "$HOME_DIR/.local/bin" \
+    "$HOME_DIR/.cache/bobsled" \
+    "$HOME_DIR/.config/systemd/user"
+sudo -u "$USER_NAME" chmod 0700 \
+    "$HOME_DIR/.ssh" \
+    "$HOME_DIR/.local" \
+    "$HOME_DIR/.local/bin" \
+    "$HOME_DIR/.cache/bobsled"
+sudo -u "$USER_NAME" touch "$HOME_DIR/.ssh/authorized_keys"
+sudo -u "$USER_NAME" chmod 0600 "$HOME_DIR/.ssh/authorized_keys"
 
 echo "bootstrap: $USER_NAME ready"

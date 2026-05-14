@@ -73,7 +73,7 @@ Supporting packages under `internal/`:
 ```
 ~bobsled/                                    # /var/lib/bobsled
   config.yaml, state.yaml, app-key.pem, image-digest.env
-  bin/bobsled-mint
+  .local/bin/bobsled-mint
   .config/systemd/user/bobsled@.service
   .cache/bobsled/slots/<N>/<repo-slug>/      # the (slot, repo) cache
                           podman-storage/    # inner podman graph root

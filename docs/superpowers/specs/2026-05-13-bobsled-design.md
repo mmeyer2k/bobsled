@@ -40,7 +40,7 @@ Orchestrate a small fleet (1–3 hosts, 5–20 runners total) of self-hosted Git
    │   user-level systemd (systemctl --user, run as `bobsled`): │
    │                                                               │
    │   bobsled@{1..N}.service (template, Restart=always)        │
-   │     ExecStartPre: %h/bin/bobsled-mint                      │
+   │     ExecStartPre: %h/.local/bin/bobsled-mint                      │
    │                     --instance %i --output %t/.../jit.json    │
    │     ExecStart:    podman run --rm --userns=keep-id            │
    │                     --read-only --security-opt=...            │
@@ -77,7 +77,7 @@ All paths below live in the `bobsled` user's home and runtime directory. No syst
   ├── app-key.pem                             # GitHub App private key, 0600
   ├── state.yaml                              # single source of truth for this host
   ├── image-digest.env                        # BOBSLED_IMAGE_DIGEST=sha256:...
-  ├── bin/bobsled-mint                     # one-shot Go binary
+  ├── .local/bin/bobsled-mint              # one-shot Go binary
   ├── .config/systemd/user/
   │     └── bobsled@.service               # user-level template unit
   └── .cache/bobsled/slots/<N>/            # per-(slot, repo) persistent cache, 0700
@@ -123,7 +123,7 @@ Image is built by the operator (`bobsled image build`) and shipped to hosts eith
 
 ### 2. `bobsled-mint` — one-shot Go binary, ~200 LOC
 
-Invoked by `ExecStartPre` on every runner restart. Stateless. Lives at `~bobsled/bin/bobsled-mint`.
+Invoked by `ExecStartPre` on every runner restart. Stateless. Lives at `~bobsled/.local/bin/bobsled-mint` (XDG convention).
 
 Flow:
 1. Read `~bobsled/config.yaml` (app_id, app_key path, GitHub API base).
@@ -154,7 +154,7 @@ Type=exec
 EnvironmentFile=%h/image-digest.env
 RuntimeDirectory=bobsled/%i
 RuntimeDirectoryMode=0700
-ExecStartPre=%h/bin/bobsled-mint \
+ExecStartPre=%h/.local/bin/bobsled-mint \
              --instance %i \
              --output %t/bobsled/%i/jit.json
 ExecStart=/usr/bin/podman run --rm \
@@ -276,7 +276,7 @@ Pool-specific labels (e.g. `bar-secrets`, `gpu`, `large`) are operator-defined p
 
 ```
 user-systemd starts bobsled@7.service
-  └─► ExecStartPre: ~/bin/bobsled-mint --instance 7 \
+  └─► ExecStartPre: ~/.local/bin/bobsled-mint --instance 7 \
                        --output /run/user/<uid>/bobsled/7/jit.json
         ├─ load ~/config.yaml
         ├─ load ~/state.yaml; look up instance 7 (e.g., repo=acme/foo)
