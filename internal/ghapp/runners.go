@@ -13,6 +13,7 @@ import (
 type RunnerRef struct {
 	ID   int64  `json:"id"`
 	Name string `json:"name"`
+	Busy bool   `json:"busy"`
 }
 
 func (c *Client) ListRepoRunners(ctx context.Context, repo string) ([]RunnerRef, error) {
