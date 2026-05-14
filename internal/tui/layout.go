@@ -169,35 +169,23 @@ func (m Model) renderRecent() string {
 	return b.String()
 }
 
-// formatKeys renders a slice of (key, desc) pairs as "key desc   ·   key desc …".
-func formatKeys(pairs ...[2]string) string {
-	parts := make([]string, 0, len(pairs))
-	for _, kv := range pairs {
-		parts = append(parts, keyStyle.Render(kv[0])+" "+descStyle.Render(kv[1]))
-	}
-	return strings.Join(parts, descStyle.Render("  ·  "))
-}
-
 func (m Model) renderFooter() string {
-	row1 := formatKeys(
-		[2]string{"j/k", "nav"},
-		[2]string{"⏎", "expand"},
-		[2]string{"R", "refresh"},
-		[2]string{"?", "help"},
-		[2]string{"q", "quit"},
+	row1Items := []hint{
+		{"j/k", "nav"},
+	}
+	if m.Cursor.Kind == CursorHost || m.Cursor.Kind == CursorRepo {
+		row1Items = append(row1Items, hint{"⏎", "expand"})
+	}
+	row1Items = append(row1Items,
+		hint{"R", "refresh"},
+		hint{"?", "help"},
+		hint{"q", "quit"},
 	)
-	row2 := formatKeys(
-		[2]string{"a", "add slot"},
-		[2]string{"p/P", "pool +/-"},
-		[2]string{"A", "add host"},
-		[2]string{"d", "drain"},
-		[2]string{"D", "remove host"},
-		[2]string{"r", "reset cache"},
-		[2]string{"g", "gc"},
-		[2]string{"l", "logs"},
-	)
+
+	row2Items := m.contextualActions()
+
 	sep := sepStyle.Render(strings.Repeat("─", m.Width))
-	help := sep + "\n" + row1 + "\n" + row2
+	help := sep + "\n" + formatHints(row1Items) + "\n" + formatHints(row2Items)
 
 	if m.Flash != nil && time.Now().Before(m.Flash.Until) {
 		style := footerStyle
@@ -207,4 +195,90 @@ func (m Model) renderFooter() string {
 		return style.Render(m.Flash.Text) + "\n" + help
 	}
 	return help
+}
+
+type hint struct{ key, desc string }
+
+func formatHints(hs []hint) string {
+	parts := make([]string, 0, len(hs))
+	for _, h := range hs {
+		parts = append(parts, keyStyle.Render(h.key)+" "+descStyle.Render(h.desc))
+	}
+	return strings.Join(parts, descStyle.Render("  ·  "))
+}
+
+func (m Model) contextualActions() []hint {
+	switch m.Cursor.Kind {
+	case CursorHost:
+		out := []hint{}
+		if m.hostHasEnabledSlots(m.Cursor.Host) {
+			out = append(out, hint{"d", "drain host"})
+		}
+		out = append(out,
+			hint{"D", "remove host"},
+			hint{"r", "reset caches"},
+			hint{"g", "gc"},
+			hint{"a", "add pool"},
+			hint{"p", "name pool"},
+			hint{"A", "add host"},
+		)
+		return out
+	case CursorRepo:
+		out := []hint{}
+		if m.repoHasEnabledSlots(m.Cursor.Host, m.Cursor.Repo) {
+			out = append(out, hint{"d", "drain pool"})
+		}
+		out = append(out,
+			hint{"r", "reset caches"},
+			hint{"a", "+1 slot"},
+			hint{"P", "remove pool"},
+		)
+		return out
+	case CursorSlot:
+		out := []hint{}
+		if m.slotIsEnabled(m.Cursor.Host, m.Cursor.Slot) {
+			out = append(out, hint{"d", "drain"})
+		}
+		out = append(out,
+			hint{"r", "reset cache"},
+			hint{"a", "+1 slot"},
+			hint{"P", "remove pool"},
+		)
+		return out
+	}
+	return nil
+}
+
+func (m Model) hostHasEnabledSlots(host string) bool {
+	h := m.Hosts[host]
+	if h == nil {
+		return false
+	}
+	for _, s := range h.Slots {
+		if s.Enabled {
+			return true
+		}
+	}
+	return false
+}
+
+func (m Model) repoHasEnabledSlots(host, repo string) bool {
+	h := m.Hosts[host]
+	if h == nil {
+		return false
+	}
+	for _, s := range h.Slots {
+		if s.Repo == repo && s.Enabled {
+			return true
+		}
+	}
+	return false
+}
+
+func (m Model) slotIsEnabled(host string, n int) bool {
+	h := m.Hosts[host]
+	if h == nil {
+		return false
+	}
+	return h.Slots[n].Enabled
 }

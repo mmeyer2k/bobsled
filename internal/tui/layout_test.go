@@ -40,6 +40,68 @@ func TestRender_StableSnapshot(t *testing.T) {
 	require.True(t, strings.Contains(out, "j/k") || strings.Contains(out, "?"), "footer keybindings present")
 }
 
+func TestContextualActions_HostRowAllEnabled(t *testing.T) {
+	m := newTestModelForFooter()
+	m.Cursor = Cursor{Host: "h1", Kind: CursorHost}
+	m.Hosts["h1"] = &poller.HostState{
+		Name: "h1", Reachable: true,
+		Slots: map[int]poller.SlotState{1: {N: 1, Enabled: true, UnitState: "active"}},
+	}
+	got := m.contextualActions()
+	keys := keysOf(got)
+	require.Contains(t, keys, "d", "drain should show when host has enabled slots")
+}
+
+func TestContextualActions_HostRowAllDisabled(t *testing.T) {
+	m := newTestModelForFooter()
+	m.Cursor = Cursor{Host: "h1", Kind: CursorHost}
+	m.Hosts["h1"] = &poller.HostState{
+		Name: "h1", Reachable: true,
+		Slots: map[int]poller.SlotState{1: {N: 1, Enabled: false, UnitState: "inactive"}},
+	}
+	got := m.contextualActions()
+	keys := keysOf(got)
+	require.NotContains(t, keys, "d", "drain should be hidden when no slots are enabled")
+}
+
+func TestContextualActions_SlotDisabledNoDrain(t *testing.T) {
+	m := newTestModelForFooter()
+	m.Hosts["h1"] = &poller.HostState{
+		Name: "h1",
+		Slots: map[int]poller.SlotState{1: {N: 1, Enabled: false, UnitState: "active", Repo: "acme/foo"}},
+	}
+	m.Cursor = Cursor{Host: "h1", Repo: "acme/foo", Slot: 1, Kind: CursorSlot}
+	got := m.contextualActions()
+	keys := keysOf(got)
+	require.NotContains(t, keys, "d", "drain should be hidden on a disabled slot")
+	require.Contains(t, keys, "r", "reset cache should always be available")
+}
+
+func TestContextualActions_SlotEnabledHasDrain(t *testing.T) {
+	m := newTestModelForFooter()
+	m.Hosts["h1"] = &poller.HostState{
+		Name: "h1",
+		Slots: map[int]poller.SlotState{1: {N: 1, Enabled: true, UnitState: "active", Repo: "acme/foo"}},
+	}
+	m.Cursor = Cursor{Host: "h1", Repo: "acme/foo", Slot: 1, Kind: CursorSlot}
+	got := m.contextualActions()
+	require.Contains(t, keysOf(got), "d")
+}
+
+// helpers
+func newTestModelForFooter() Model {
+	inv := &inventory.Inventory{Hosts: map[string]inventory.Host{"h1": {SSH: "x", Capacity: 4}}}
+	return New(inv, nil, "inventory.yaml")
+}
+
+func keysOf(hs []hint) []string {
+	out := make([]string, len(hs))
+	for i, h := range hs {
+		out[i] = h.key
+	}
+	return out
+}
+
 func TestRender_ShowsFormWhenOpen(t *testing.T) {
 	m := New(&inventory.Inventory{
 		Hosts: map[string]inventory.Host{"h1": {SSH: "bobsled@h1", Capacity: 4}},
