@@ -46,3 +46,34 @@ func TestListAndDeleteRunner(t *testing.T) {
 	require.NoError(t, c.DeleteRepoRunner(t.Context(), "acme/foo", 42))
 	require.Equal(t, int64(42), deletedID)
 }
+
+func TestListRepoRunnersETag(t *testing.T) {
+	keyPath, _ := writeKey(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/acme/foo/installation":
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": int64(7)})
+		case "/app/installations/7/access_tokens":
+			_ = json.NewEncoder(w).Encode(map[string]any{"token": "ghs"})
+		case "/repos/acme/foo/actions/runners":
+			if r.Header.Get("If-None-Match") == `"xyz"` {
+				w.Header().Set("ETag", `"xyz"`)
+				w.WriteHeader(http.StatusNotModified)
+				return
+			}
+			w.Header().Set("ETag", `"xyz"`)
+			_ = json.NewEncoder(w).Encode(map[string]any{"runners": []map[string]any{}})
+		}
+	}))
+	defer srv.Close()
+	c := &Client{APIBase: srv.URL, AppID: 1, KeyPath: keyPath, HTTP: srv.Client(), Now: time.Now}
+
+	_, etag, err := c.ListRepoRunnersETag(t.Context(), "acme/foo", "")
+	require.NoError(t, err)
+	require.Equal(t, `"xyz"`, etag)
+
+	got, etag2, err := c.ListRepoRunnersETag(t.Context(), "acme/foo", etag)
+	require.NoError(t, err)
+	require.Equal(t, `"xyz"`, etag2)
+	require.Nil(t, got)
+}
