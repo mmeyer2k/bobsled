@@ -82,6 +82,12 @@ func ScaleCmd(inventoryPath, host, repo string, count int) tea.Cmd {
 	return runAction(desc, inventoryPath, "scale", "--host", host, "--repo", repo, "--count", fmt.Sprint(count))
 }
 
+// RepoAddCmd runs `bobsled repo add <owner/name> --host <h> --count 1`.
+func RepoAddCmd(inventoryPath, repo, host string, count int) tea.Cmd {
+	desc := fmt.Sprintf("add pool %s on %s (count=%d)", repo, host, count)
+	return runAction(desc, inventoryPath, "repo", "add", repo, "--host", host, "--count", fmt.Sprint(count))
+}
+
 func runAction(description, inventory string, args ...string) tea.Cmd {
 	return func() tea.Msg {
 		exe, err := os.Executable()

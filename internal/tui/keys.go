@@ -107,7 +107,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 				"g            gc orphan GitHub runners\n"+
 				"a            add slot (CLI only for v1 — use `bobsled scale`)\n"+
 				"A            add host (CLI only for v1 — use `bobsled host add`)\n"+
-				"p            (v1) flash hint for `bobsled repo add`\n"+
+				"p            add pool (text prompt: owner/name on cursor's host)\n"+
 				"P            remove pool (drain + drop from inventory)\n"+
 				"R            refresh (pollers tick automatically)\n"+
 				"?            this help\n"+
@@ -117,7 +117,19 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m, nil
 
 	case 'p':
-		m.Flash = &flash{Text: "v1: adding a new repo pool needs an inline prompt — use `bobsled repo add` from the CLI.", Until: time.Now().Add(4 * time.Second)}
+		if m.Cursor.Host == "" {
+			m.Flash = &flash{Text: "No host under cursor — wait for the first poll.", Until: time.Now().Add(3 * time.Second)}
+			return m, nil
+		}
+		host := m.Cursor.Host
+		mod := NewPromptModal(
+			"Add pool on "+host,
+			"Type owner/name. Count defaults to 1; spread = this host. (The GitHub App must already be installed on the repo.)",
+			func(text string) tea.Cmd {
+				return RepoAddCmd(m.InventoryPath, text, host, 1)
+			},
+		)
+		m.Modal = &mod
 		return m, nil
 
 	case 'P':

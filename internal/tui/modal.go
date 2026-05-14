@@ -11,12 +11,22 @@ type Modal struct {
 	Title     string
 	Body      string
 	Input     string
+	// OnConfirm is the "typed yes" path: invoked when Input == "yes".
 	OnConfirm func() tea.Cmd
+	// OnSubmit is the free-text path: invoked with Input on Enter,
+	// regardless of value (as long as it's non-empty).
+	OnSubmit  func(text string) tea.Cmd
 	Cancelled bool
 }
 
 func NewConfirmModal(title, body string, onConfirm func() tea.Cmd) Modal {
 	return Modal{Title: title, Body: body, OnConfirm: onConfirm}
+}
+
+// NewPromptModal creates a free-text input modal. OnSubmit receives the typed
+// input when the user presses Enter.
+func NewPromptModal(title, body string, onSubmit func(text string) tea.Cmd) Modal {
+	return Modal{Title: title, Body: body, OnSubmit: onSubmit}
 }
 
 func (m Modal) OnKey(msg tea.KeyMsg) Modal {
@@ -36,20 +46,37 @@ func (m Modal) OnKey(msg tea.KeyMsg) Modal {
 	return m
 }
 
+// ReadyToConfirm returns true when Enter should fire the action.
+// Confirm modals require literal "yes". Prompt modals accept any non-empty
+// input.
 func (m Modal) ReadyToConfirm() bool {
+	if m.OnSubmit != nil {
+		return strings.TrimSpace(m.Input) != ""
+	}
 	return strings.ToLower(strings.TrimSpace(m.Input)) == "yes"
 }
 
+// Confirm dispatches the appropriate callback.
 func (m Modal) Confirm() tea.Cmd {
-	if m.OnConfirm == nil || !m.ReadyToConfirm() {
+	if !m.ReadyToConfirm() {
 		return nil
 	}
-	return m.OnConfirm()
+	if m.OnSubmit != nil {
+		return m.OnSubmit(strings.TrimSpace(m.Input))
+	}
+	if m.OnConfirm != nil {
+		return m.OnConfirm()
+	}
+	return nil
 }
 
 // Render returns the styled modal contents. Caller composes with View.
 func (m Modal) Render(width int) string {
-	box := "╭── " + m.Title + " ──╮\n│\n│  " + m.Body + "\n│\n│  Type 'yes' to confirm: " + m.Input + "_\n│\n│  [⏎ confirm]   [esc cancel]\n╰" + strings.Repeat("─", len(m.Title)+8) + "╯"
+	prompt := "Type 'yes' to confirm: "
+	if m.OnSubmit != nil {
+		prompt = "> "
+	}
+	box := "╭── " + m.Title + " ──╮\n│\n│  " + m.Body + "\n│\n│  " + prompt + m.Input + "_\n│\n│  [⏎ submit]   [esc cancel]\n╰" + strings.Repeat("─", len(m.Title)+8) + "╯"
 	return box
 }
 

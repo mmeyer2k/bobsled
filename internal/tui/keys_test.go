@@ -162,10 +162,26 @@ func TestKey_P_OnHostFlashes(t *testing.T) {
 	require.Contains(t, mm.Flash.Text, "slot row")
 }
 
-func TestKey_LowercaseP_FlashesAddHint(t *testing.T) {
+func TestKey_LowercaseP_OpensAddPoolPrompt(t *testing.T) {
 	m := modelWithTwoHosts(t)
+	m.Cursor = Cursor{Host: "h1", Kind: CursorHost}
 	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
 	mm := mNew.(Model)
-	require.NotNil(t, mm.Flash)
-	require.Contains(t, mm.Flash.Text, "repo add")
+	require.NotNil(t, mm.Modal)
+	require.Contains(t, mm.Modal.Title, "Add pool on h1")
+	require.NotNil(t, mm.Modal.OnSubmit)
+}
+
+func TestModal_PromptAcceptsAnyNonEmpty(t *testing.T) {
+	called := ""
+	mod := NewPromptModal("Add pool", "Type owner/name", func(text string) tea.Cmd {
+		called = text
+		return nil
+	})
+	mod = mod.OnKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	mod = mod.OnKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	mod = mod.OnKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	require.True(t, mod.ReadyToConfirm(), "any non-empty input should be ready")
+	_ = mod.Confirm()
+	require.Equal(t, "a/b", called)
 }
