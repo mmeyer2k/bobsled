@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **bobsled** orchestrates a small fleet (1–3 hosts, 5–20 runners) of self-hosted, ephemeral, podman-in-podman GitHub Actions runners. The operator runs a Go CLI on their workstation; it SSHes to each host as `bobsled@host` and drives `systemctl --user`. Each unit launches one rootless podman container per job, which mints a fresh JIT runner config from a GitHub App, runs one job, then exits — systemd's `Restart=always` brings up a fresh container.
 
+Public repo: https://github.com/mmeyer2k/bobsled
+
 ## Authoritative documents
 
 - **Spec:** `docs/superpowers/specs/2026-05-13-bobsled-design.md` — design decisions, threat model, file layout, error handling. Re-read the relevant section before making non-trivial changes.
