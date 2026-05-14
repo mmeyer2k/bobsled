@@ -74,7 +74,9 @@ func parseUnits(s string, st *HostState) {
 			continue
 		}
 		var n int
-		_, _ = fmt.Sscanf(f[0], "bobsled@%d.service", &n)
+		if _, err := fmt.Sscanf(f[0], "bobsled@%d.service", &n); err != nil || n <= 0 {
+			continue // skip the template `bobsled@.service` entry
+		}
 		ss := st.Slots[n]
 		ss.N = n
 		ss.UnitState = f[2] // active / activating / failed / inactive
@@ -89,7 +91,9 @@ func parseUnitFiles(s string, st *HostState) {
 			continue
 		}
 		var n int
-		_, _ = fmt.Sscanf(f[0], "bobsled@%d.service", &n)
+		if _, err := fmt.Sscanf(f[0], "bobsled@%d.service", &n); err != nil || n <= 0 {
+			continue // skip the template `bobsled@.service` entry
+		}
 		ss := st.Slots[n]
 		ss.N = n
 		ss.Enabled = f[1] == "enabled"

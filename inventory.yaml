@@ -1,0 +1,13 @@
+github:
+  app_id: 3706881
+  app_key: /home/mike/Downloads/bobsled-actions-runner.2026-05-13.private-key.pem
+hosts:
+  local:
+    ssh: bobsled@localhost
+    bootstrap_ssh: mike@localhost
+    capacity: 4
+pools:
+  - repo: mmeyer2k/bobsled-smoke
+    count: 1
+    labels: [self-hosted, linux, x64, bobsled, podman]
+    spread: [local]
