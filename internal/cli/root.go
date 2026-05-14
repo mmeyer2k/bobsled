@@ -29,6 +29,7 @@ func NewRoot() *cobra.Command {
 	root.AddCommand(newScaleCmd())
 	root.AddCommand(newTuiCmd())
 	root.AddCommand(newRepoCmd())
+	root.AddCommand(newSlotCmd())
 	return root
 }
 
