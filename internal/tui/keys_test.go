@@ -31,7 +31,9 @@ func TestKey_J_MovesCursorDown(t *testing.T) {
 	require.Equal(t, CursorHost, m.Cursor.Kind)
 	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 	mm := mNew.(Model)
-	require.Equal(t, CursorSlot, mm.Cursor.Kind)
+	// With 3-level tree, j from a host moves to the first repo group, not a slot.
+	require.Equal(t, CursorRepo, mm.Cursor.Kind)
+	require.Equal(t, "h1", mm.Cursor.Host)
 }
 
 func TestKey_K_MovesCursorUp(t *testing.T) {

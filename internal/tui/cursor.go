@@ -2,8 +2,6 @@
 package tui
 
 import (
-	"sort"
-
 	"github.com/m-meyer2k/bobsled/internal/tui/poller"
 )
 
@@ -11,101 +9,74 @@ type CursorKind int
 
 const (
 	CursorHost CursorKind = iota
+	CursorRepo
 	CursorSlot
 )
 
 type Cursor struct {
 	Host string
+	Repo string // when Kind == CursorRepo or CursorSlot
 	Kind CursorKind
-	Slot int // when Kind==CursorSlot
+	Slot int // when Kind == CursorSlot
 }
 
 // FirstCursor returns the cursor pointing at the first host header.
 func FirstCursor(hosts map[string]*poller.HostState, expanded map[string]bool) Cursor {
-	names := sortedHostNames(hosts)
-	if len(names) == 0 {
+	rows := BuildRows(hosts, nil, expanded)
+	if len(rows) == 0 {
 		return Cursor{}
 	}
-	return Cursor{Host: names[0], Kind: CursorHost}
+	return cursorForRow(rows[0])
 }
 
 // NextCursor returns the cursor one row down. Out-of-tree → returns input unchanged.
 func NextCursor(c Cursor, hosts map[string]*poller.HostState, expanded map[string]bool) Cursor {
-	names := sortedHostNames(hosts)
-	for i, name := range names {
-		switch {
-		case c.Host == name && c.Kind == CursorHost:
-			if expanded[name] {
-				slots := sortedSlotNums(hosts[name])
-				if len(slots) > 0 {
-					return Cursor{Host: name, Kind: CursorSlot, Slot: slots[0]}
-				}
-			}
-			if i+1 < len(names) {
-				return Cursor{Host: names[i+1], Kind: CursorHost}
-			}
-			return c
-		case c.Host == name && c.Kind == CursorSlot:
-			slots := sortedSlotNums(hosts[name])
-			idx := sort.SearchInts(slots, c.Slot)
-			if idx+1 < len(slots) {
-				return Cursor{Host: name, Kind: CursorSlot, Slot: slots[idx+1]}
-			}
-			if i+1 < len(names) {
-				return Cursor{Host: names[i+1], Kind: CursorHost}
-			}
-			return c
-		}
+	rows := BuildRows(hosts, nil, expanded)
+	i := cursorIndex(c, rows)
+	if i < 0 || i+1 >= len(rows) {
+		return c
 	}
-	return c
+	return cursorForRow(rows[i+1])
 }
 
 // PrevCursor returns the cursor one row up. Out-of-tree → returns input unchanged.
 func PrevCursor(c Cursor, hosts map[string]*poller.HostState, expanded map[string]bool) Cursor {
-	names := sortedHostNames(hosts)
-	for i, name := range names {
-		switch {
-		case c.Host == name && c.Kind == CursorHost:
-			if i == 0 {
-				return c
+	rows := BuildRows(hosts, nil, expanded)
+	i := cursorIndex(c, rows)
+	if i <= 0 {
+		return c
+	}
+	return cursorForRow(rows[i-1])
+}
+
+func cursorForRow(r Row) Cursor {
+	switch r.Kind {
+	case RowHost:
+		return Cursor{Host: r.Host, Kind: CursorHost}
+	case RowRepo:
+		return Cursor{Host: r.Host, Repo: r.Repo, Kind: CursorRepo}
+	case RowSlot:
+		return Cursor{Host: r.Host, Repo: r.Repo, Slot: r.Slot.N, Kind: CursorSlot}
+	}
+	return Cursor{}
+}
+
+func cursorIndex(c Cursor, rows []Row) int {
+	for i, r := range rows {
+		switch c.Kind {
+		case CursorHost:
+			if r.Kind == RowHost && r.Host == c.Host {
+				return i
 			}
-			prev := names[i-1]
-			if expanded[prev] {
-				slots := sortedSlotNums(hosts[prev])
-				if len(slots) > 0 {
-					return Cursor{Host: prev, Kind: CursorSlot, Slot: slots[len(slots)-1]}
-				}
+		case CursorRepo:
+			if r.Kind == RowRepo && r.Host == c.Host && r.Repo == c.Repo {
+				return i
 			}
-			return Cursor{Host: prev, Kind: CursorHost}
-		case c.Host == name && c.Kind == CursorSlot:
-			slots := sortedSlotNums(hosts[name])
-			idx := sort.SearchInts(slots, c.Slot)
-			if idx == 0 {
-				return Cursor{Host: name, Kind: CursorHost}
+		case CursorSlot:
+			if r.Kind == RowSlot && r.Host == c.Host && r.Repo == c.Repo && r.Slot.N == c.Slot {
+				return i
 			}
-			return Cursor{Host: name, Kind: CursorSlot, Slot: slots[idx-1]}
 		}
 	}
-	return c
-}
-
-func sortedHostNames(m map[string]*poller.HostState) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
-}
-
-func sortedSlotNums(h *poller.HostState) []int {
-	if h == nil {
-		return nil
-	}
-	out := make([]int, 0, len(h.Slots))
-	for k := range h.Slots {
-		out = append(out, k)
-	}
-	sort.Ints(out)
-	return out
+	return -1
 }
