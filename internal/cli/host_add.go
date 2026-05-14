@@ -60,7 +60,7 @@ func newHostAddCmd() *cobra.Command {
 				return fmt.Errorf("--image-digest required")
 			}
 			keyLocal := firstNonEmpty(appKey, expandHome(inv.GitHub.AppKey))
-			if err := installToHost(sshT, mintBinary, imageDigest, keyLocal, inv.GitHub.AppID, name); err != nil {
+			if err := installToHost(sshT, mintBinary, imageDigest, keyLocal, inv.GitHub.AppID, name, inv.LoadedRegistry()); err != nil {
 				return fmt.Errorf("install: %w", err)
 			}
 

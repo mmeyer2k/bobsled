@@ -32,7 +32,7 @@ func newHostInstallCmd() *cobra.Command {
 			if keyLocal == "" {
 				keyLocal = expandHome(inv.GitHub.AppKey)
 			}
-			if err := installToHost(host.SSH, mintBinary, imageDigest, keyLocal, inv.GitHub.AppID, name); err != nil {
+			if err := installToHost(host.SSH, mintBinary, imageDigest, keyLocal, inv.GitHub.AppID, name, inv.LoadedRegistry()); err != nil {
 				return err
 			}
 			fmt.Printf("host %s installed (image=%s)\n", name, imageDigest)
