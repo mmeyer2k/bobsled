@@ -23,6 +23,7 @@ func NewRoot() *cobra.Command {
 	root.AddCommand(newDrainCmd())
 	root.AddCommand(newLsCmd())
 	root.AddCommand(newGcCmd())
+	root.AddCommand(newCacheCmd())
 	return root
 }
 
