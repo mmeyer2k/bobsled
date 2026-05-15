@@ -177,7 +177,7 @@ func (m Model) renderRecent() string {
 }
 
 func (m Model) renderFooter() string {
-	navItems := []hint{{"↑/↓", ""}}
+	navItems := []hint{{"↑/↓", "move"}}
 	if m.Cursor.Kind == CursorHost || m.Cursor.Kind == CursorRepo {
 		navItems = append(navItems, hint{"⏎", "expand"})
 	}
@@ -188,12 +188,13 @@ func (m Model) renderFooter() string {
 	}
 	actionItems := m.contextualActions()
 
-	rows := []string{formatSections([]section{{"NAV", navItems}})}
+	secs := []section{{"NAV", navItems}}
 	if len(actionItems) > 0 {
-		rows = append(rows, formatSections([]section{{"ACTIONS", actionItems}}))
+		secs = append(secs, section{"ACTIONS", actionItems})
 	}
-	rows = append(rows, formatSections([]section{{"GLOBAL", globalItems}}))
-	help := strings.Join(rows, "\n")
+	secs = append(secs, section{"GLOBAL", globalItems})
+
+	help := renderLegendTable(secs, m.Width)
 
 	if m.Flash != nil && time.Now().Before(m.Flash.Until) {
 		style := footerStyle
@@ -212,24 +213,114 @@ type section struct {
 	hints []hint
 }
 
-func formatHints(hs []hint) string {
-	parts := make([]string, 0, len(hs))
-	for _, h := range hs {
-		if h.desc == "" {
-			parts = append(parts, keyStyle.Render(h.key))
-		} else {
-			parts = append(parts, keyStyle.Render(h.key)+" "+descStyle.Render(h.desc))
+// renderLegendTable lays out the footer hints as a small table: one row per
+// section, fixed-width section label gutter on the left, then a grid of
+// `key  desc` cells aligned to a uniform column width shared by every row.
+//
+// The shared cell width is computed across all sections so the user's eye can
+// scan straight down the column of keys (or the column of descriptions) — that
+// alignment is the whole point. Cells are styled (bold cyan key, dim desc) but
+// padding is added to the *raw* strings before styling because ANSI escapes
+// break `fmt %-Ns` width.
+func renderLegendTable(secs []section, termWidth int) string {
+	if len(secs) == 0 {
+		return ""
+	}
+
+	// Section-label column: fixed width, padded so all section rows line up.
+	labelW := 0
+	for _, s := range secs {
+		if w := lipgloss.Width(s.label); w > labelW {
+			labelW = w
 		}
 	}
-	return strings.Join(parts, descStyle.Render("  ·  "))
+
+	// Cell width = max(key) + keyDescGap + max(desc), shared across sections.
+	const keyDescGap = 1   // spaces between key and desc inside one cell
+	const cellGap = 3      // spaces between cells in a row
+	const labelGap = 2     // spaces between section label gutter and first cell
+	maxKey, maxDesc := 0, 0
+	for _, s := range secs {
+		for _, h := range s.hints {
+			if w := lipgloss.Width(h.key); w > maxKey {
+				maxKey = w
+			}
+			if w := lipgloss.Width(h.desc); w > maxDesc {
+				maxDesc = w
+			}
+		}
+	}
+	cellW := maxKey + keyDescGap + maxDesc
+	if maxDesc == 0 {
+		cellW = maxKey
+	}
+
+	// Decide how many cells fit per row given the terminal width.
+	cellsPerRow := 0
+	if termWidth > 0 {
+		avail := termWidth - labelW - labelGap
+		if avail < cellW {
+			cellsPerRow = 1 // give up on grid alignment, one cell per row
+		} else {
+			cellsPerRow = (avail + cellGap) / (cellW + cellGap)
+			if cellsPerRow < 1 {
+				cellsPerRow = 1
+			}
+		}
+	}
+
+	var b strings.Builder
+	cellSep := strings.Repeat(" ", cellGap)
+	for i, s := range secs {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		// Section label gutter — pad raw, then style.
+		labelPadded := fmt.Sprintf("%-*s", labelW, s.label)
+		b.WriteString(sectionLabelStyle.Render(labelPadded))
+		b.WriteString(strings.Repeat(" ", labelGap))
+
+		// Hint cells. When we wrap to a second line for one section, indent
+		// past the label gutter so the cell grid stays aligned.
+		indent := strings.Repeat(" ", labelW+labelGap)
+		for j, h := range s.hints {
+			if j > 0 {
+				if cellsPerRow > 0 && j%cellsPerRow == 0 {
+					b.WriteByte('\n')
+					b.WriteString(indent)
+				} else {
+					b.WriteString(cellSep)
+				}
+			}
+			b.WriteString(renderHintCell(h, maxKey, cellW))
+		}
+	}
+	return b.String()
 }
 
-func formatSections(secs []section) string {
-	parts := make([]string, 0, len(secs))
-	for _, s := range secs {
-		parts = append(parts, sectionLabelStyle.Render(s.label)+"  "+formatHints(s.hints))
+// renderHintCell formats one `key  desc` cell padded to cellW visual columns.
+// The key is right-aligned to keyW so vertical scanning hits a clean column
+// of keys; descriptions hang left after a single space.
+func renderHintCell(h hint, keyW, cellW int) string {
+	keyPad := keyW - lipgloss.Width(h.key)
+	if keyPad < 0 {
+		keyPad = 0
 	}
-	return strings.Join(parts, descStyle.Render("     "))
+	styledKey := strings.Repeat(" ", keyPad) + keyStyle.Render(h.key)
+	if h.desc == "" {
+		// Pad cell out to cellW visually so later cells in the row stay aligned.
+		tail := cellW - keyW
+		if tail < 0 {
+			tail = 0
+		}
+		return styledKey + strings.Repeat(" ", tail)
+	}
+	cell := styledKey + " " + descStyle.Render(h.desc)
+	visible := keyW + 1 + lipgloss.Width(h.desc)
+	if pad := cellW - visible; pad > 0 {
+		cell += strings.Repeat(" ", pad)
+	}
+	return cell
 }
 
 func (m Model) contextualActions() []hint {
