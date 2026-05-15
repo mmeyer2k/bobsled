@@ -81,7 +81,8 @@ func runApply(invPath string) error {
 	if err != nil {
 		return err
 	}
-	desired := inventory.Allocate(inv)
+	current := readAllHostStates(inv)
+	desired := inventory.AllocateWithCurrent(inv, current)
 	for name, host := range inv.Hosts {
 		if err := applyHost(name, host, desired[name]); err != nil {
 			return fmt.Errorf("%s: %w", name, err)

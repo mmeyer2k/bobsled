@@ -23,7 +23,7 @@ ExecStart=/usr/bin/podman run --rm --replace \
     -v %h/registries.conf:/home/podman/.config/containers/registries.conf:ro \
     bobsled:${BOBSLED_IMAGE_DIGEST}
 ExecStopPost=/bin/rm -rf %t/bobsled/%i
-Restart=on-failure
+Restart=always
 RestartSec=5s
 StartLimitBurst=5
 StartLimitIntervalSec=60

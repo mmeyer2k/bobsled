@@ -55,19 +55,32 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		switch m.Cursor.Kind {
 		case CursorHost:
 			title = "Drain host " + host + "?"
-			body = "Stops every slot on this host. Idle slots stop immediately; busy slots finish their current job, then exit."
-			run = func() tea.Cmd { return DrainHostCmd(m.InventoryPath, host) }
+			body = "Drain every slot (idle: stop now; busy: finish current job), then remove the host from inventory."
+			run = func() tea.Cmd { return HostRemoveCmd(m.InventoryPath, host) }
 		case CursorRepo:
 			repo := m.Cursor.Repo
-			title = "Drain " + repo + " on " + host + "?"
-			body = "Stops every slot serving this repo on this host. Idle slots stop immediately; busy slots finish their current job."
-			captured := m.Hosts
-			run = func() tea.Cmd { return DrainRepoCmd(m.InventoryPath, host, repo, captured) }
+			title = "Drain pool " + repo + " on " + host + "?"
+			body = "Drain every slot for this repo (idle: stop now; busy: finish current job), then remove the pool from inventory."
+			run = func() tea.Cmd { return RepoRemoveCmd(m.InventoryPath, repo) }
 		case CursorSlot:
 			slot := m.Cursor.Slot
-			title = fmt.Sprintf("Drain slot %d on %s?", slot, host)
-			body = "Stops this slot. If idle: immediate. If running a job: the job finishes, then the container exits."
-			run = func() tea.Cmd { return DrainSlotCmd(m.InventoryPath, host, slot) }
+			enabled := false
+			if hs := m.Hosts[host]; hs != nil {
+				enabled = hs.Slots[slot].Enabled
+			}
+			if enabled {
+				title = fmt.Sprintf("Drain slot %d on %s?", slot, host)
+				body = "Stop this slot. Idle: immediate. Busy: finish the current job, then exit. Slot stays in the pool (disabled) until deleted."
+				run = func() tea.Cmd { return DrainSlotCmd(m.InventoryPath, host, slot) }
+			} else {
+				title = fmt.Sprintf("Delete slot %d on %s?", slot, host)
+				body = "Remove this exact slot from the pool. (The slot is already stopped; this prunes its state.yaml entry and decrements the pool count.)"
+				pendingKey := fmt.Sprintf("%s:%d", host, slot)
+				run = func() tea.Cmd {
+					m.Pending[pendingKey] = "deleting"
+					return SlotRemoveCmd(m.InventoryPath, host, slot)
+				}
+			}
 		}
 		fwr := NewConfirmForm(title, body)
 		return m.openForm(fwr, func(result interface{}) tea.Cmd {
@@ -77,17 +90,21 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			return nil
 		})
 
-	case 'D':
-		if m.Cursor.Kind != CursorHost {
-			m.Flash = &flash{Text: "D removes a whole host — put the cursor on a host row.", Until: time.Now().Add(3 * time.Second)}
+	case 'e':
+		if m.Cursor.Kind != CursorSlot {
 			return m, nil
 		}
 		host := m.Cursor.Host
-		fwr := NewConfirmForm("Remove host "+host+"?",
-			"Drain all slots, optionally gc runners, and drop from inventory.")
+		slot := m.Cursor.Slot
+		if hs := m.Hosts[host]; hs != nil && hs.Slots[slot].Enabled {
+			m.Flash = &flash{Text: fmt.Sprintf("slot %d is already enabled", slot), Until: time.Now().Add(3 * time.Second)}
+			return m, nil
+		}
+		fwr := NewConfirmForm(fmt.Sprintf("Enable slot %d on %s?", slot, host),
+			"Re-arm this slot — fresh JIT config, runner re-registers, container restarts.")
 		return m.openForm(fwr, func(result interface{}) tea.Cmd {
 			if confirmed, _ := result.(bool); confirmed {
-				return HostRemoveCmd(m.InventoryPath, host)
+				return SlotEnableCmd(m.InventoryPath, host, slot)
 			}
 			return nil
 		})
@@ -142,13 +159,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		fwr := NewConfirmForm("Keybindings",
 			"j/k or ↑/↓   move\n"+
 				"⏎            expand/collapse host or repo group\n"+
-				"d            drain (host / repo / slot)\n"+
-				"D            remove host\n"+
+				"d            drain & remove (host / pool / slot)\n"+
+				"e            enable a disabled slot\n"+
 				"r            reset cache (host / repo / slot)\n"+
 				"g            gc orphan GitHub runners\n"+
 				"a            add slot (picker on host; +1 on repo/slot)\n"+
 				"p            add pool by name\n"+
-				"P            remove pool\n"+
 				"R            refresh\n"+
 				"?            this help\n"+
 				"q / Ctrl-C   quit")
@@ -169,22 +185,6 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 				return nil
 			}
 			return RepoAddCmd(m.InventoryPath, repo, host, 1)
-		})
-
-	case 'P':
-		repo := m.Cursor.Repo
-		if repo == "" {
-			m.Flash = &flash{Text: "Put the cursor on a repo or slot row.", Until: time.Now().Add(3 * time.Second)}
-			return m, nil
-		}
-		captured := repo
-		fwr := NewConfirmForm("Remove pool "+repo+"?",
-			"Drain every slot for this repo across the fleet, gc its GitHub-side runners, and drop from inventory.")
-		return m.openForm(fwr, func(result interface{}) tea.Cmd {
-			if confirmed, _ := result.(bool); confirmed {
-				return RepoRemoveCmd(m.InventoryPath, captured)
-			}
-			return nil
 		})
 
 	case 'a':

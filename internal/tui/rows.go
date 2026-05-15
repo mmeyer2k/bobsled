@@ -44,9 +44,14 @@ func BuildRows(hosts map[string]*poller.HostState, runners map[string]*poller.Re
 		if !expanded[hostName] {
 			continue
 		}
-		// Group slots by repo.
+		// Group slots by repo. Skip orphan slots (no repo in state.yaml) —
+		// they're leftover systemd units from prior deletes, not real pool
+		// members. Showing them as an anonymous "(N)" group is noise.
 		byRepo := map[string][]poller.SlotState{}
 		for _, s := range h.Slots {
+			if s.Repo == "" {
+				continue
+			}
 			byRepo[s.Repo] = append(byRepo[s.Repo], s)
 		}
 		repoNames := make([]string, 0, len(byRepo))
@@ -56,7 +61,13 @@ func BuildRows(hosts map[string]*poller.HostState, runners map[string]*poller.Re
 		sort.Strings(repoNames)
 		for _, repo := range repoNames {
 			slots := byRepo[repo]
-			sort.Slice(slots, func(i, j int) bool { return slots[i].N < slots[j].N })
+			// Enabled slots first, then disabled. Numeric within each group.
+			sort.Slice(slots, func(i, j int) bool {
+				if slots[i].Enabled != slots[j].Enabled {
+					return slots[i].Enabled
+				}
+				return slots[i].N < slots[j].N
+			})
 			rows = append(rows, Row{
 				Kind:      RowRepo,
 				Host:      hostName,

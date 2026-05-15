@@ -3,6 +3,8 @@ package tui
 
 import (
 	"context"
+	"strconv"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -11,6 +13,19 @@ import (
 	"github.com/m-meyer2k/bobsled/internal/inventory"
 	"github.com/m-meyer2k/bobsled/internal/tui/poller"
 )
+
+// parsePendingKey reverses the "host:slot" encoding used by Model.Pending.
+func parsePendingKey(k string) (host string, slot int, ok bool) {
+	i := strings.LastIndex(k, ":")
+	if i < 0 {
+		return "", 0, false
+	}
+	n, err := strconv.Atoi(k[i+1:])
+	if err != nil {
+		return "", 0, false
+	}
+	return k[:i], n, true
+}
 
 const (
 	hostsInterval   = 2 * time.Second
@@ -42,6 +57,11 @@ type Model struct {
 	Form         *FormWithResult
 	formOnSubmit func(result interface{}) tea.Cmd
 	pickerHost   string
+	// Pending overlays a transient state label on a slot row while a
+	// long-running action is in flight. Key: "<host>:<slot>". Value: label
+	// e.g. "deleting". Cleared either by the next poll (when the slot row
+	// vanishes) or by onActionResult when the underlying command finishes.
+	Pending   map[string]string
 	StatusLog *ringBuffer
 	Flash     *flash
 	Paused    bool
@@ -65,6 +85,7 @@ func New(inv *inventory.Inventory, c *ghapp.Client, inventoryPath string) Model 
 		Runs:          map[string]*poller.RepoRuns{},
 		Errs:          map[string]string{},
 		Expanded:      expanded,
+		Pending:       map[string]string{},
 		StatusLog:     newRingBuffer(5),
 		InventoryPath: inventoryPath,
 	}
@@ -222,14 +243,35 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.Width, m.Height = v.Width, v.Height
 		// don't return — let the form see resize too if it's open
 	case hostsTickMsg:
+		// Snapshot cursor's vertical position before the state change so we
+		// can snap to the same spot if the cursored row disappears.
+		oldIdx := CursorIndex(m.Cursor, m.Hosts, m.Expanded)
 		if v.M.Err != nil {
 			m.Errs["hosts/"+v.M.Host] = v.M.Err.Error()
 		} else {
 			delete(m.Errs, "hosts/"+v.M.Host)
 			m.Hosts[v.M.Host] = v.M.State
 		}
+		// Clear pending overlays whose slot no longer exists in state — the
+		// "deleting" label was a transient hint and the row is gone.
+		for key := range m.Pending {
+			h, n, ok := parsePendingKey(key)
+			if !ok {
+				delete(m.Pending, key)
+				continue
+			}
+			hs := m.Hosts[h]
+			if hs == nil {
+				continue
+			}
+			if _, exists := hs.Slots[n]; !exists {
+				delete(m.Pending, key)
+			}
+		}
 		if m.Cursor.Host == "" && len(m.Hosts) > 0 {
 			m.Cursor = FirstCursor(m.Hosts, m.Expanded)
+		} else {
+			m.Cursor = EnsureCursorValid(m.Cursor, m.Hosts, m.Expanded, oldIdx)
 		}
 		return m, waitForHostsMsg(v.Ch)
 	case runnersTickMsg:
