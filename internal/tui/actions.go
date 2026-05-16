@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -30,6 +31,33 @@ func (m Model) onActionLog(msg ActionLogMsg) (Model, tea.Cmd) {
 func (m Model) onActionResult(msg ActionResultMsg) (Model, tea.Cmd) {
 	if msg.Err != nil {
 		m.Flash = &flash{Text: fmt.Sprintf("%s failed: %v", msg.Description, msg.Err), IsError: true, Until: time.Now().Add(5 * time.Second)}
+		// A failed add-pool action won't produce an enabled slot via poll,
+		// so clear any pending-pool entry whose repo doesn't have an enabled
+		// slot. Succeeded entries get cleared in hostsTickMsg on the next
+		// poll once an enabled slot shows up, so this drop is safe.
+		for key := range m.PendingPools {
+			parts := strings.SplitN(key, "|", 2)
+			if len(parts) != 2 {
+				delete(m.PendingPools, key)
+				continue
+			}
+			h, repo := parts[0], parts[1]
+			hs := m.Hosts[h]
+			if hs == nil {
+				delete(m.PendingPools, key)
+				continue
+			}
+			hasEnabled := false
+			for _, s := range hs.Slots {
+				if s.Repo == repo && s.Enabled {
+					hasEnabled = true
+					break
+				}
+			}
+			if !hasEnabled {
+				delete(m.PendingPools, key)
+			}
+		}
 	} else {
 		m.Flash = &flash{Text: msg.Description + " ✓", Until: time.Now().Add(3 * time.Second)}
 	}

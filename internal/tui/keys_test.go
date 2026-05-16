@@ -157,11 +157,8 @@ func TestKey_Enter_TogglesRepoExpand(t *testing.T) {
 	require.Equal(t, true, mm.Expanded[key], "second Enter re-expands")
 }
 
-func TestKey_LowercaseP_OpensAddPoolForm(t *testing.T) {
-	m := modelWithTwoHosts(t)
-	m.Cursor = Cursor{Host: "h1", Kind: CursorHost}
-	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
-	mm := mNew.(Model)
-	require.NotNil(t, mm.Form, "p should open a huh input form for adding a pool")
-}
+// Lowercase `p` was the text-input "add pool by name" key. It's gone — the
+// `a` picker now includes a `+ enter repo name manually` option at the top
+// that opens the input form when selected, so the single-entry path lives
+// under `a` (see openManualAddMsg in model.go).
 
