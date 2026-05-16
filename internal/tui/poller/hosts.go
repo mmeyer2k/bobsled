@@ -129,14 +129,49 @@ type HostsMsg struct {
 // HostsPoller probes each target on an interval and sends results to emit.
 // One goroutine per target so a slow host doesn't block the others. Stops on
 // ctx done. hosts maps inventory short name → SSH target.
-func HostsPoller(ctx context.Context, mux *SSHMux, hosts map[string]string, interval time.Duration, emit chan<- HostsMsg) {
+//
+// `setInterval` lets callers retune the polling cadence at runtime. Send a
+// new Duration on the channel and every per-host loop will `ticker.Reset()`
+// on its next iteration. Pass nil to opt out — the loops will tick at the
+// initial `interval` forever. Buffered size 1 is enough; later sends will
+// overwrite a pending un-consumed update via the fan-out broker.
+func HostsPoller(ctx context.Context, mux *SSHMux, hosts map[string]string, interval time.Duration, setInterval <-chan time.Duration, emit chan<- HostsMsg) {
+	// One per-host control channel so the fan-out broker can deliver the new
+	// interval to every loop. Buffered 1 with overwrite-on-full semantics —
+	// only the latest value matters, an unread one is stale anyway.
+	perLoop := make([]chan time.Duration, 0, len(hosts))
 	for name, target := range hosts {
-		go hostLoop(ctx, mux, name, target, interval, emit)
+		ch := make(chan time.Duration, 1)
+		perLoop = append(perLoop, ch)
+		go hostLoop(ctx, mux, name, target, interval, ch, emit)
+	}
+	if setInterval != nil {
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case d := <-setInterval:
+					for _, ch := range perLoop {
+						// Drain a stale value if present, then write. Keeps
+						// channel buffer == 1 with "last write wins" semantics.
+						select {
+						case <-ch:
+						default:
+						}
+						select {
+						case ch <- d:
+						default:
+						}
+					}
+				}
+			}
+		}()
 	}
 	<-ctx.Done()
 }
 
-func hostLoop(ctx context.Context, mux *SSHMux, name, target string, interval time.Duration, emit chan<- HostsMsg) {
+func hostLoop(ctx context.Context, mux *SSHMux, name, target string, interval time.Duration, setInterval <-chan time.Duration, emit chan<- HostsMsg) {
 	tick := time.NewTicker(interval)
 	defer tick.Stop()
 	for {
@@ -150,6 +185,10 @@ func hostLoop(ctx context.Context, mux *SSHMux, name, target string, interval ti
 		case <-ctx.Done():
 			return
 		case <-tick.C:
+		case d := <-setInterval:
+			// Reset the ticker and proceed immediately to the next probe —
+			// pressing R should feel responsive, not wait out the old period.
+			tick.Reset(d)
 		}
 	}
 }

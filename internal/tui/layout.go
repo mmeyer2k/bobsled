@@ -57,8 +57,11 @@ func (m Model) renderHeader() string {
 		busy += len(rep.InProgress)
 	}
 	left := headerStyle.Render("bobsled top")
-	right := fmt.Sprintf("fleet: %d hosts · %d slots · %d busy   ↻ %s",
-		len(m.Hosts), totalSlots, busy, hostsInterval)
+	// Make the cadence pop visually when the user cycles it with `R` — the
+	// flash is transient, the header is steady state.
+	cadence := keyStyle.Render("↻ " + m.HostsInterval.String())
+	right := fmt.Sprintf("fleet: %d hosts · %d slots · %d busy   %s",
+		len(m.Hosts), totalSlots, busy, cadence)
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, "   ", right)
 }
 
@@ -182,7 +185,7 @@ func (m Model) renderFooter() string {
 		navItems = append(navItems, hint{"⏎", "expand"})
 	}
 	globalItems := []hint{
-		{"R", "refresh"},
+		{"R", "cycle poll rate"},
 		{"?", "help"},
 		{"q", "quit"},
 	}

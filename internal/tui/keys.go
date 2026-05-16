@@ -152,7 +152,27 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		})
 
 	case 'R':
-		m.Flash = &flash{Text: "refresh queued — pollers tick every 2s anyway", Until: time.Now().Add(2 * time.Second)}
+		// Cycle the hosts poll interval: 2→3→…→8→2. Live-applied via the
+		// control channel so the next tick fires at the new cadence.
+		next := m.HostsInterval + time.Second
+		if next > hostsIntervalMax {
+			next = hostsIntervalMin
+		}
+		m.HostsInterval = next
+		select {
+		case m.hostsIntervalCh <- next:
+		default:
+			// Channel was full with a stale value; drop it and write ours.
+			select {
+			case <-m.hostsIntervalCh:
+			default:
+			}
+			select {
+			case m.hostsIntervalCh <- next:
+			default:
+			}
+		}
+		m.Flash = &flash{Text: fmt.Sprintf("hosts poll interval → %s", next), Until: time.Now().Add(2 * time.Second)}
 		return m, nil
 
 	case '?':
@@ -165,7 +185,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 				"g            gc orphan GitHub runners\n"+
 				"a            add slot (picker on host; +1 on repo/slot)\n"+
 				"p            add pool by name\n"+
-				"R            refresh\n"+
+				"R            cycle hosts poll interval (2s → 8s → wrap)\n"+
 				"?            this help\n"+
 				"q / Ctrl-C   quit")
 		return m.openForm(fwr, func(result interface{}) tea.Cmd { return nil })

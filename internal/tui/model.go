@@ -31,6 +31,11 @@ const (
 	hostsInterval   = 2 * time.Second
 	runnersInterval = 3 * time.Second
 	runsInterval    = 15 * time.Second
+
+	// `R` key cycles the hosts poll interval through these values.
+	// Lower = snappier UI / more SSH traffic. Higher = quieter / staler view.
+	hostsIntervalMin = 2 * time.Second
+	hostsIntervalMax = 8 * time.Second
 )
 
 // forceRedrawMsg is a no-op message used to trigger a Bubbletea re-render
@@ -67,6 +72,13 @@ type Model struct {
 	Paused    bool
 	Width     int
 	Height    int
+
+	// HostsInterval is the live polling cadence shown in the header (`↻ 2s`).
+	// `R` cycles it through [hostsIntervalMin .. hostsIntervalMax] in 1s
+	// steps and wraps back. SetHostsInterval ships the new value into the
+	// poller via hostsIntervalCh so it takes effect immediately.
+	HostsInterval   time.Duration
+	hostsIntervalCh chan time.Duration
 }
 
 // New builds a fresh Model from the inventory + ghapp client + inventory path.
@@ -77,17 +89,19 @@ func New(inv *inventory.Inventory, c *ghapp.Client, inventoryPath string) Model 
 		expanded[name] = true
 	}
 	return Model{
-		Inv:           inv,
-		Client:        c,
-		Mux:           poller.NewSSHMux(),
-		Hosts:         map[string]*poller.HostState{},
-		Runners:       map[string]*poller.RepoRunners{},
-		Runs:          map[string]*poller.RepoRuns{},
-		Errs:          map[string]string{},
-		Expanded:      expanded,
-		Pending:       map[string]string{},
-		StatusLog:     newRingBuffer(5),
-		InventoryPath: inventoryPath,
+		Inv:             inv,
+		Client:          c,
+		Mux:             poller.NewSSHMux(),
+		Hosts:           map[string]*poller.HostState{},
+		Runners:         map[string]*poller.RepoRunners{},
+		Runs:            map[string]*poller.RepoRuns{},
+		Errs:            map[string]string{},
+		Expanded:        expanded,
+		Pending:         map[string]string{},
+		StatusLog:       newRingBuffer(5),
+		InventoryPath:   inventoryPath,
+		HostsInterval:   hostsInterval,
+		hostsIntervalCh: make(chan time.Duration, 1),
 	}
 }
 
@@ -115,7 +129,7 @@ func startHostsPoller(m Model) tea.Cmd {
 		targets[name] = h.SSH
 	}
 	ch := make(chan poller.HostsMsg, 32)
-	go poller.HostsPoller(programCtx(), m.Mux, targets, hostsInterval, ch)
+	go poller.HostsPoller(programCtx(), m.Mux, targets, m.HostsInterval, m.hostsIntervalCh, ch)
 	return waitForHostsMsg(ch)
 }
 
