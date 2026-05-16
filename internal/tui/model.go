@@ -25,6 +25,18 @@ const manualEntrySentinel = "+ enter repo name manually"
 // after the picker closes.
 type openManualAddMsg struct{ host string }
 
+// flashMsg sets a transient footer message. Used by form callbacks (which
+// can't mutate the model directly) to surface "no repos picked" and similar
+// hints after the form closes.
+type flashMsg struct {
+	Text    string
+	IsError bool
+}
+
+func flashCmd(text string, isError bool) tea.Cmd {
+	return func() tea.Msg { return flashMsg{Text: text, IsError: isError} }
+}
+
 // parsePendingKey reverses the "host:slot" encoding used by Model.Pending.
 func parsePendingKey(k string) (host string, slot int, ok bool) {
 	i := strings.LastIndex(k, ":")
@@ -336,6 +348,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.onActionLog(v)
 	case ActionResultMsg:
 		return m.onActionResult(v)
+	case flashMsg:
+		dur := 3 * time.Second
+		if v.IsError {
+			dur = 5 * time.Second
+		}
+		m.Flash = &flash{Text: v.Text, IsError: v.IsError, Until: time.Now().Add(dur)}
+		return m, nil
 	case AccessibleReposLoadedMsg:
 		if v.Err != nil {
 			m.Flash = &flash{Text: "list repos failed: " + v.Err.Error(), IsError: true, Until: time.Now().Add(5 * time.Second)}
@@ -364,7 +383,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.openForm(fwr, func(result interface{}) tea.Cmd {
 			picked, _ := result.([]string)
 			if len(picked) == 0 {
-				return nil
+				return flashCmd("nothing selected — use x or space to toggle items, then enter to submit", false)
 			}
 			// Split off the manual-entry sentinel from real picks.
 			wantManual := false
