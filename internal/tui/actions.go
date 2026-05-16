@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -30,6 +31,34 @@ func (m Model) onActionLog(msg ActionLogMsg) (Model, tea.Cmd) {
 func (m Model) onActionResult(msg ActionResultMsg) (Model, tea.Cmd) {
 	if msg.Err != nil {
 		m.Flash = &flash{Text: fmt.Sprintf("%s failed: %v", msg.Description, msg.Err), IsError: true, Until: time.Now().Add(5 * time.Second)}
+		// A failed add-pool action will never produce a real row, so the
+		// "creating" phantom would stick forever waiting on a poll that
+		// can't help. Clear any pending-pool entry whose repo still isn't
+		// in state — succeeded pending entries get cleared by the next
+		// poll, so this drop is safe for failure-only cases too.
+		for key := range m.PendingPools {
+			parts := strings.SplitN(key, "|", 2)
+			if len(parts) != 2 {
+				delete(m.PendingPools, key)
+				continue
+			}
+			h, repo := parts[0], parts[1]
+			hs := m.Hosts[h]
+			if hs == nil {
+				delete(m.PendingPools, key)
+				continue
+			}
+			seen := false
+			for _, s := range hs.Slots {
+				if s.Repo == repo {
+					seen = true
+					break
+				}
+			}
+			if !seen {
+				delete(m.PendingPools, key)
+			}
+		}
 	} else {
 		m.Flash = &flash{Text: msg.Description + " ✓", Until: time.Now().Add(3 * time.Second)}
 	}

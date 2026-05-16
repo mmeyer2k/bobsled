@@ -184,6 +184,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			if repo == "" {
 				return nil
 			}
+			m.PendingPools[host+"|"+repo] = "creating"
 			return RepoAddCmd(m.InventoryPath, repo, host, 1)
 		})
 

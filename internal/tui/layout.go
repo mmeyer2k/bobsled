@@ -64,6 +64,7 @@ func (m Model) renderHeader() string {
 
 func (m Model) renderTree() string {
 	rows := BuildRows(m.Hosts, m.Runners, m.Expanded)
+	rows = AppendPendingPoolRows(rows, m.Hosts, m.Expanded, m.PendingPools)
 	var b strings.Builder
 	for _, r := range rows {
 		line := m.renderRow(r)
@@ -104,6 +105,13 @@ func (m Model) renderRow(r Row) string {
 	default: // RowSlot
 		label := r.Slot.UnitState
 		stateStyle := slotActive
+		// Phantom row for a pending pool add — no real slot exists yet.
+		// AppendPendingPoolRows synthesizes these with Slot.N == 0 and
+		// UnitState == "creating".
+		if r.Slot.N == 0 && r.Slot.UnitState == "creating" {
+			padded := fmt.Sprintf("%-12s", "creating")
+			return fmt.Sprintf("       —  %s  %s", slotActivating.Render(padded), "—")
+		}
 		// Pending overlay wins: while a slot-remove is in flight, show
 		// "deleting" regardless of the underlying systemd state.
 		pendingKey := fmt.Sprintf("%s:%d", r.Host, r.Slot.N)

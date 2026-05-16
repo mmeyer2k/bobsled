@@ -61,8 +61,16 @@ type Model struct {
 	// long-running action is in flight. Key: "<host>:<slot>". Value: label
 	// e.g. "deleting". Cleared either by the next poll (when the slot row
 	// vanishes) or by onActionResult when the underlying command finishes.
-	Pending   map[string]string
-	StatusLog *ringBuffer
+	Pending map[string]string
+	// PendingPools synthesizes a phantom repo+slot row during pool creation
+	// so the user sees something happening between form submit and the first
+	// poll that picks up the new pool. Key: "<host>|<repo>" (pipe separator
+	// chosen because GitHub repos can contain colons in the future API but
+	// never pipes). Value: label (currently always "creating"). Cleared in
+	// hostsTickMsg when the host's state reports a slot for the repo, and in
+	// onActionResult on failure (since no poll will ever reflect a failed add).
+	PendingPools map[string]string
+	StatusLog    *ringBuffer
 	Flash     *flash
 	Paused    bool
 	Width     int
@@ -86,6 +94,7 @@ func New(inv *inventory.Inventory, c *ghapp.Client, inventoryPath string) Model 
 		Errs:          map[string]string{},
 		Expanded:      expanded,
 		Pending:       map[string]string{},
+		PendingPools:  map[string]string{},
 		StatusLog:     newRingBuffer(5),
 		InventoryPath: inventoryPath,
 	}
@@ -268,6 +277,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				delete(m.Pending, key)
 			}
 		}
+		// Clear PendingPools entries whose repo now appears in state — the
+		// "creating" phantom row has been superseded by the real slot row.
+		for key := range m.PendingPools {
+			parts := strings.SplitN(key, "|", 2)
+			if len(parts) != 2 {
+				delete(m.PendingPools, key)
+				continue
+			}
+			h, repo := parts[0], parts[1]
+			hs := m.Hosts[h]
+			if hs == nil {
+				continue
+			}
+			for _, s := range hs.Slots {
+				if s.Repo == repo {
+					delete(m.PendingPools, key)
+					break
+				}
+			}
+		}
 		if m.Cursor.Host == "" && len(m.Hosts) > 0 {
 			m.Cursor = FirstCursor(m.Hosts, m.Expanded)
 		} else {
@@ -310,10 +339,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		)
 		invPath := m.InventoryPath
 		hostStates := m.Hosts
+		pending := m.PendingPools
 		return m.openForm(fwr, func(result interface{}) tea.Cmd {
 			picked, _ := result.([]string)
 			if len(picked) == 0 {
 				return nil
+			}
+			for _, repo := range picked {
+				pending[host+"|"+repo] = "creating"
 			}
 			return AddPoolsCmd(invPath, host, picked, hostStates)
 		})
