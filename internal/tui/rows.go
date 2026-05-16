@@ -130,15 +130,18 @@ func AppendPendingPoolRows(rows []Row, hosts map[string]*poller.HostState, expan
 		if hs == nil {
 			continue
 		}
-		// Repo already exists for real? Skip the phantom.
-		alreadyReal := false
+		// Skip the phantom only when an *enabled* slot for this repo already
+		// exists — that's the "real row covers it" case. If the existing
+		// slots are all disabled (e.g. a prior failed add left state around),
+		// we still want to show "creating" so the re-add gets visual feedback.
+		hasEnabled := false
 		for _, s := range hs.Slots {
-			if s.Repo == repo {
-				alreadyReal = true
+			if s.Repo == repo && s.Enabled {
+				hasEnabled = true
 				break
 			}
 		}
-		if alreadyReal {
+		if hasEnabled {
 			continue
 		}
 		perHost[host] = append(perHost[host], phantom{host, repo})

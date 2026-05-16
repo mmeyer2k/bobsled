@@ -31,11 +31,10 @@ func (m Model) onActionLog(msg ActionLogMsg) (Model, tea.Cmd) {
 func (m Model) onActionResult(msg ActionResultMsg) (Model, tea.Cmd) {
 	if msg.Err != nil {
 		m.Flash = &flash{Text: fmt.Sprintf("%s failed: %v", msg.Description, msg.Err), IsError: true, Until: time.Now().Add(5 * time.Second)}
-		// A failed add-pool action will never produce a real row, so the
-		// "creating" phantom would stick forever waiting on a poll that
-		// can't help. Clear any pending-pool entry whose repo still isn't
-		// in state — succeeded pending entries get cleared by the next
-		// poll, so this drop is safe for failure-only cases too.
+		// A failed add-pool action won't produce an enabled slot via poll,
+		// so clear any pending-pool entry whose repo doesn't have an enabled
+		// slot. Succeeded entries get cleared in hostsTickMsg on the next
+		// poll once an enabled slot shows up, so this drop is safe.
 		for key := range m.PendingPools {
 			parts := strings.SplitN(key, "|", 2)
 			if len(parts) != 2 {
@@ -48,14 +47,14 @@ func (m Model) onActionResult(msg ActionResultMsg) (Model, tea.Cmd) {
 				delete(m.PendingPools, key)
 				continue
 			}
-			seen := false
+			hasEnabled := false
 			for _, s := range hs.Slots {
-				if s.Repo == repo {
-					seen = true
+				if s.Repo == repo && s.Enabled {
+					hasEnabled = true
 					break
 				}
 			}
-			if !seen {
+			if !hasEnabled {
 				delete(m.PendingPools, key)
 			}
 		}

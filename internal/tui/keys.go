@@ -163,30 +163,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 				"e            enable a disabled slot\n"+
 				"r            reset cache (host / repo / slot)\n"+
 				"g            gc orphan GitHub runners\n"+
-				"a            add slot (picker on host; +1 on repo/slot)\n"+
-				"p            add pool by name\n"+
+				"a            add slot / pool (picker on host; +1 on repo/slot)\n"+
 				"R            refresh\n"+
 				"?            this help\n"+
 				"q / Ctrl-C   quit")
 		return m.openForm(fwr, func(result interface{}) tea.Cmd { return nil })
-
-	case 'p':
-		if m.Cursor.Host == "" {
-			m.Flash = &flash{Text: "No host under cursor — wait for the first poll.", Until: time.Now().Add(3 * time.Second)}
-			return m, nil
-		}
-		host := m.Cursor.Host
-		fwr := NewInputForm("Add pool on "+host,
-			"Type owner/name. Count defaults to 1; spread = this host.",
-			"owner/name")
-		return m.openForm(fwr, func(result interface{}) tea.Cmd {
-			repo, _ := result.(string)
-			if repo == "" {
-				return nil
-			}
-			m.PendingPools[host+"|"+repo] = "creating"
-			return RepoAddCmd(m.InventoryPath, repo, host, 1)
-		})
 
 	case 'a':
 		if m.Cursor.Host == "" {

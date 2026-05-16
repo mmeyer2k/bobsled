@@ -339,7 +339,6 @@ func (m Model) contextualActions() []hint {
 			{"r", "reset caches"},
 			{"g", "gc"},
 			{"a", "add pool"},
-			{"p", "name pool"},
 			{"A", "add host"},
 		}
 	case CursorRepo:

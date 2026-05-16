@@ -14,6 +14,17 @@ import (
 	"github.com/m-meyer2k/bobsled/internal/tui/poller"
 )
 
+// manualEntrySentinel is the synthetic top option in the add-pool picker that
+// lets the user type a repo name not in the App-installed list. Format is
+// deliberately not `owner/name` so it filters out when the user starts typing
+// a repo query.
+const manualEntrySentinel = "+ enter repo name manually"
+
+// openManualAddMsg is dispatched when the user selects the manualEntrySentinel
+// from the multi-select picker, asking Update to open the text-input form
+// after the picker closes.
+type openManualAddMsg struct{ host string }
+
 // parsePendingKey reverses the "host:slot" encoding used by Model.Pending.
 func parsePendingKey(k string) (host string, slot int, ok bool) {
 	i := strings.LastIndex(k, ":")
@@ -277,8 +288,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				delete(m.Pending, key)
 			}
 		}
-		// Clear PendingPools entries whose repo now appears in state — the
-		// "creating" phantom row has been superseded by the real slot row.
+		// Clear PendingPools entries whose repo now has an enabled slot in
+		// state — the "creating" phantom has been superseded by the real
+		// row. A disabled slot doesn't count; we want the phantom to keep
+		// showing feedback if the previous add half-succeeded.
 		for key := range m.PendingPools {
 			parts := strings.SplitN(key, "|", 2)
 			if len(parts) != 2 {
@@ -291,7 +304,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				continue
 			}
 			for _, s := range hs.Slots {
-				if s.Repo == repo {
+				if s.Repo == repo && s.Enabled {
 					delete(m.PendingPools, key)
 					break
 				}
@@ -332,10 +345,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if host == "" {
 			return m, nil
 		}
+		// Prepend a sentinel "enter manually" option. The label deliberately
+		// doesn't follow the `owner/name` shape, so once the user starts
+		// filtering with a typical repo query (which contains "/" or alpha
+		// chars from the org slug), the sentinel naturally falls out of the
+		// filter results — no special hide-on-filter logic needed.
+		opts := make([]string, 0, len(v.Repos)+1)
+		opts = append(opts, manualEntrySentinel)
+		opts = append(opts, v.Repos...)
 		fwr := NewMultiSelectForm(
 			"Pools on "+host,
 			"Pick repos to add a slot for. Existing pools scale up; new ones get created. (x to toggle, / to filter, enter to submit)",
-			v.Repos,
+			opts,
 		)
 		invPath := m.InventoryPath
 		hostStates := m.Hosts
@@ -345,10 +366,48 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(picked) == 0 {
 				return nil
 			}
-			for _, repo := range picked {
-				pending[host+"|"+repo] = "creating"
+			// Split off the manual-entry sentinel from real picks.
+			wantManual := false
+			realPicks := picked[:0]
+			for _, p := range picked {
+				if p == manualEntrySentinel {
+					wantManual = true
+				} else {
+					realPicks = append(realPicks, p)
+				}
 			}
-			return AddPoolsCmd(invPath, host, picked, hostStates)
+			var cmds []tea.Cmd
+			if len(realPicks) > 0 {
+				for _, repo := range realPicks {
+					pending[host+"|"+repo] = "creating"
+				}
+				cmds = append(cmds, AddPoolsCmd(invPath, host, realPicks, hostStates))
+			}
+			if wantManual {
+				cmds = append(cmds, func() tea.Msg { return openManualAddMsg{host: host} })
+			}
+			if len(cmds) == 0 {
+				return nil
+			}
+			if len(cmds) == 1 {
+				return cmds[0]
+			}
+			return tea.Batch(cmds...)
+		})
+	case openManualAddMsg:
+		host := v.host
+		fwr := NewInputForm("Add pool on "+host,
+			"Type owner/name. Count defaults to 1; spread = this host.",
+			"owner/name")
+		pending := m.PendingPools
+		invPath := m.InventoryPath
+		return m.openForm(fwr, func(result interface{}) tea.Cmd {
+			repo, _ := result.(string)
+			if repo == "" {
+				return nil
+			}
+			pending[host+"|"+repo] = "creating"
+			return RepoAddCmd(invPath, repo, host, 1)
 		})
 	}
 
