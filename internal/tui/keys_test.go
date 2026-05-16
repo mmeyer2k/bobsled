@@ -3,6 +3,7 @@ package tui
 
 import (
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/m-meyer2k/bobsled/internal/inventory"
@@ -73,13 +74,25 @@ func TestKey_D_OpensForm(t *testing.T) {
 	require.NotNil(t, mm.Form.Form, "form field must be set")
 }
 
-func TestKey_R_FlashesRefreshMessage(t *testing.T) {
+func TestKey_R_CyclesPollInterval(t *testing.T) {
 	m := modelWithTwoHosts(t)
 	m.Cursor = Cursor{Host: "h1", Kind: CursorHost}
-	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'R'}})
-	mm := mNew.(Model)
-	require.NotNil(t, mm.Flash)
-	require.Contains(t, mm.Flash.Text, "refresh")
+	require.Equal(t, 2*time.Second, m.HostsInterval, "starts at the min")
+
+	// Cycle 2 → 3 → 4 → 5 → 6 → 7 → 8, then wrap to 2.
+	expected := []time.Duration{
+		3 * time.Second, 4 * time.Second, 5 * time.Second,
+		6 * time.Second, 7 * time.Second, 8 * time.Second,
+		2 * time.Second, // wrap
+	}
+	current := m
+	for i, want := range expected {
+		mNew, _ := current.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'R'}})
+		current = mNew.(Model)
+		require.Equalf(t, want, current.HostsInterval, "step %d: expected %s after R press", i+1, want)
+		require.NotNil(t, current.Flash, "each press should flash")
+		require.Contains(t, current.Flash.Text, want.String(), "flash text mentions the new interval")
+	}
 }
 
 func TestKey_Question_OpensForm(t *testing.T) {
@@ -144,11 +157,8 @@ func TestKey_Enter_TogglesRepoExpand(t *testing.T) {
 	require.Equal(t, true, mm.Expanded[key], "second Enter re-expands")
 }
 
-func TestKey_LowercaseP_OpensAddPoolForm(t *testing.T) {
-	m := modelWithTwoHosts(t)
-	m.Cursor = Cursor{Host: "h1", Kind: CursorHost}
-	mNew, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
-	mm := mNew.(Model)
-	require.NotNil(t, mm.Form, "p should open a huh input form for adding a pool")
-}
+// Lowercase `p` was the text-input "add pool by name" key. It's gone — the
+// `a` picker now includes a `+ enter repo name manually` option at the top
+// that opens the input form when selected, so the single-entry path lives
+// under `a` (see openManualAddMsg in model.go).
 

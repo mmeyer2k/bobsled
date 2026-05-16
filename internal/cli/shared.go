@@ -45,7 +45,12 @@ func installToHost(sshTarget, mintBinary, imageDigest, appKey string, appID int6
 		return err
 	}
 
-	// Registry artifacts.
+	// Registry artifacts. The cache dir is also created by bootstrap.sh, but
+	// hosts bootstrapped before the registry feature won't have it — recreate
+	// here so re-running install on an old host is self-healing.
+	if _, err := s.Run("mkdir -p .cache/bobsled/registry && chmod 0700 .cache/bobsled/registry"); err != nil {
+		return fmt.Errorf("ensure registry cache dir: %w", err)
+	}
 	regCfg, err := registry.RenderConfig(reg)
 	if err != nil {
 		return fmt.Errorf("render registry config: %w", err)

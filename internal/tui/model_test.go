@@ -177,3 +177,72 @@ type stringErr string
 
 func (e stringErr) Error() string { return string(e) }
 func assertErr(s string) error    { return stringErr(s) }
+
+// Direct exercise of the AccessibleReposLoadedMsg → form → cb path used by
+// the 'a' picker on a host row. The user-visible bug was "adding a repo
+// doesn't do anything"; these tests pin the closure logic that decides what
+// happens after the form closes with each kind of selection.
+
+func TestAddPicker_RealRepoSetsPendingAndDispatches(t *testing.T) {
+	m := newTestModel(t)
+	m.pickerHost = "h1"
+	m.Hosts["h1"] = &poller.HostState{Name: "h1"}
+
+	mNew, _ := m.Update(AccessibleReposLoadedMsg{Repos: []string{"acme/new"}})
+	mm := mNew.(Model)
+	require.NotNil(t, mm.Form, "AccessibleReposLoadedMsg should open the form")
+	require.NotNil(t, mm.formOnSubmit, "cb should be wired")
+
+	cmd := mm.formOnSubmit([]string{"acme/new"})
+	require.NotNil(t, cmd, "picking a real repo should return a non-nil cmd")
+	require.Equal(t, "creating", mm.PendingPools["h1|acme/new"], "PendingPools should be set so the phantom shows")
+}
+
+func TestAddPicker_ManualSentinelOnlyDispatchesOpenMsg(t *testing.T) {
+	m := newTestModel(t)
+	m.pickerHost = "h1"
+	m.Hosts["h1"] = &poller.HostState{Name: "h1"}
+
+	mNew, _ := m.Update(AccessibleReposLoadedMsg{Repos: []string{"acme/foo"}})
+	mm := mNew.(Model)
+	cmd := mm.formOnSubmit([]string{manualEntrySentinel})
+	require.NotNil(t, cmd, "picking only the sentinel should emit a cmd")
+	msg := cmd()
+	_, ok := msg.(openManualAddMsg)
+	require.True(t, ok, "the cmd should emit openManualAddMsg, got %T", msg)
+	require.Empty(t, mm.PendingPools, "manual-only pick should NOT set PendingPools (the input form will)")
+}
+
+func TestAddPicker_EmptySelectionFlashesHelp(t *testing.T) {
+	m := newTestModel(t)
+	m.pickerHost = "h1"
+	m.Hosts["h1"] = &poller.HostState{Name: "h1"}
+
+	mNew, _ := m.Update(AccessibleReposLoadedMsg{Repos: []string{"acme/foo"}})
+	mm := mNew.(Model)
+	cmd := mm.formOnSubmit([]string{})
+	require.NotNil(t, cmd, "empty selection should emit a flash hint, not be a silent no-op")
+	msg := cmd()
+	fm, ok := msg.(flashMsg)
+	require.True(t, ok, "should emit a flashMsg, got %T", msg)
+	require.Contains(t, fm.Text, "toggle", "flash text should hint at the x/space toggle key")
+}
+
+func TestAddPicker_ManualPlusRealBatchesBoth(t *testing.T) {
+	m := newTestModel(t)
+	m.pickerHost = "h1"
+	m.Hosts["h1"] = &poller.HostState{Name: "h1"}
+
+	mNew, _ := m.Update(AccessibleReposLoadedMsg{Repos: []string{"acme/foo"}})
+	mm := mNew.(Model)
+	cmd := mm.formOnSubmit([]string{manualEntrySentinel, "acme/foo"})
+	require.NotNil(t, cmd, "manual + real should still emit a cmd")
+	require.Equal(t, "creating", mm.PendingPools["h1|acme/foo"], "real picks set PendingPools")
+}
+
+func TestOpenManualAddMsg_OpensInputForm(t *testing.T) {
+	m := newTestModel(t)
+	mNew, _ := m.Update(openManualAddMsg{host: "h1"})
+	mm := mNew.(Model)
+	require.NotNil(t, mm.Form, "openManualAddMsg should open the input form")
+}
